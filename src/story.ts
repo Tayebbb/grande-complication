@@ -198,6 +198,8 @@ export interface DossierStop {
   az: number;
   el: number;
   dist: number;
+  /** component ids that stay lit while everything else falls into shadow */
+  feature: string[];
 }
 
 export const DOSSIER: DossierStop[] = [
@@ -206,60 +208,70 @@ export const DOSSIER: DossierStop[] = [
     body: 'Grown, then cut and polished. A domed disc of pure corundum — Al₂O₃ — flame-grown by the fusion process Auguste Verneuil developed in 1902. At 9 on the Mohs scale, only diamond and moissanite sit above it; scratches that would erase glass never register.',
     specs: [['MATERIAL', 'Sapphire (synthetic corundum)'], ['HARDNESS', '9 Mohs · melts at 2,030 °C']],
     anchor: [-0.6, 1.45, 4.75], az: -18, el: 6, dist: 3.4,
+    feature: ['crystal'],
   },
   {
     id: 'hand-minute', index: '02', name: 'THE HANDS', material: 'MIRROR-POLISHED STEEL', accent: '#e8e8ee',
     body: 'Leaf-profile hands, milled thin and polished to a mirror so they read by reflection alone. The chronograph needle is counterweighted to spin dead-true around the central axis.',
     specs: [['PROFILE', 'Feuille (leaf), diamond-milled'], ['FINISH', 'Black-polished steel']],
     anchor: [-0.15, 0.25, 4.5], az: -18, el: 10, dist: 3.0,
+    feature: ['hand-minute', 'hand-hour', 'hand-chrono', 'subhand-left', 'subhand-right', 'hand-date', 'pinion-cap'],
   },
   {
     id: 'dial-plate', index: '03', name: 'THE DIAL', material: 'GALVANIC SMOKED SUNBURST', accent: '#8f8f98',
     body: 'Brushed from the centre outward, then graduated to black at the rim — a galvanic smoked finish. The counters are ringed with azurage, concentric grooves cut to trap and return light.',
     specs: [['FINISH', 'Sunburst, smoked gradient'], ['DETAIL', 'Azurage counters, printed scales']],
     anchor: [0, 0, 3.2], az: -4, el: 4, dist: 4.6,
+    feature: ['dial-plate', 'subdials', 'date-subdial', 'hour-markers', 'dial-apertures', 'dial-round-windows'],
   },
   {
     id: 'case-main', index: '04', name: 'THE CASE', material: '950 PLATINUM', accent: '#d4d6db',
     body: 'Cold-forged 950 platinum — 95 % pure, nearly three times the density of steel, hypoallergenic. The white luster is the metal itself, not a plating: it can be polished forever and never wear through.',
     specs: [['ALLOY', 'Pt 950 (95 % platinum)'], ['FINISH', 'Polished band, brushed flanks']],
     anchor: [1.3, 0, 2.8], az: 55, el: 14, dist: 5.0,
+    feature: ['case-main', 'lugs'],
   },
   {
     id: 'strap-upper', index: '05', name: 'THE STRAP', material: 'HAND-BRAIDED CALFSKIN', accent: '#b08a5a',
     body: 'Graphite-dyed, vegetable-tanned calfskin, plaited strand over strand across a supple core and closed with saddle stitching. Leather is the one component that records its wearer — it softens and takes a patina no two owners share.',
     specs: [['LEATHER', 'Vegetable-tanned calfskin'], ['CONSTRUCTION', 'Hand-braided, saddle-stitched']],
     anchor: [0, 2.75, 2.75], az: 26, el: 6, dist: 4.2,
+    feature: ['strap-upper', 'stitch-upper'],
   },
   {
     id: 'calendar-works', index: '06', name: 'THE CALENDAR WORKS', material: 'CHAMPAGNE-GILDED BRASS', accent: '#cbb68a',
     body: 'A 31-tooth date ring and its program wheel, gilded champagne. Once a night it advances the date — and by the shape of its cam it already knows the length of every month.',
     specs: [['WHEEL', '31-tooth date ring + program wheel'], ['FINISH', 'Champagne gilding']],
     anchor: [0.62, 0.74, 0.81], az: 14, el: 4, dist: 2.3,
+    feature: ['calendar-works'],
   },
   {
     id: 'moonphase', index: '07', name: 'THE MOONPHASE', material: 'NAVY LACQUER', accent: '#5a6db8',
     body: 'A deep navy lacquer sky carrying a silvered moon and a field of stars. It turns once every 29.53 days — the length of a lunation — so the little sky keeps step with the real one.',
     specs: [['DISC', 'Layered navy lacquer'], ['CYCLE', 'One lunation = 29.53 days']],
     anchor: [0.8, -1.08, 0.98], az: 8, el: -4, dist: 1.7,
+    feature: ['moonphase'],
   },
   {
     id: 'chrono-works', index: '08', name: 'THE COLUMN WHEEL', material: 'NITRE-BLUED STEEL', accent: '#4a6fb8',
     body: 'The chronograph\u2019s command turret: a castellated wheel whose pillars decide start, stop and return in one crisp click. Its blue is not paint — the steel is heated near 300 °C until a magnetite skin blooms peacock blue.',
     specs: [['COMMAND', 'Castellated column wheel'], ['FINISH', 'Thermally blued (~300 °C)']],
     anchor: [1.72, 0.34, 0.34], az: 30, el: 12, dist: 1.6,
+    feature: ['chrono-works'],
   },
   {
     id: 'balance-wheel', index: '09', name: 'THE BALANCE', material: 'BLUED HAIRSPRING · RUBY JEWELS', accent: '#7a4a5a',
     body: 'The regulating organ. A weighted wheel breathing against a hairspring blued the classical way — nitre-heated until it turns peacock. It pivots in synthetic ruby jewels: the same corundum as the crystal, grown into bearings that barely wear across a lifetime.',
     specs: [['OSCILLATOR', 'Balance + blued hairspring'], ['BEARINGS', 'Synthetic ruby (corundum)']],
     anchor: [0.24, -1.69, -0.05], az: 18, el: 10, dist: 2.0,
+    feature: ['balance-wheel'],
   },
   {
     id: 'movement-plate', index: '10', name: 'THE MAIN PLATE', material: 'MAILLECHORT · CÔTES DE GENÈVE', accent: '#9aa2b0',
     body: 'The chassis every wheel answers to, machined from maillechort — German silver, roughly 60 % copper, 20 % nickel, 20 % zinc — prized because it needs no plating and ages into a warm golden patina. Its bridges are striped with côtes de Genève and fixed by hand-slotted screws.',
     specs: [['ALLOY', 'Maillechort (Cu-Ni-Zn)'], ['DECORATION', 'Côtes de Genève bridges, slotted screws']],
     anchor: [0.7, -1.35, -0.45], az: 5, el: -12, dist: 2.0,
+    feature: ['movement-plate', 'movement-screws'],
   },
 ];
 

@@ -84,6 +84,12 @@ spot.shadow.camera.far = 20;
 scene.add(spot);
 scene.add(spot.target);
 
+// isolation spot: lights ONLY layer-1 (featured dossier part); crossfades in per stop
+const isoSpot = new THREE.SpotLight(0xfff0dc, 0, 0, 0.3, 0.75, 1.6);
+isoSpot.layers.set(1);
+scene.add(isoSpot);
+scene.add(isoSpot.target);
+
 /* ---- backdrop: restrained radial falloff + faint atmosphere ---- */
 function makeBackdrop(): THREE.Mesh {
   const c = document.createElement('canvas');
@@ -185,6 +191,100 @@ const tmpTarget = new THREE.Vector3();
 const tmpPos = new THREE.Vector3();
 const blendPos = new THREE.Vector3();
 const blendTarget = new THREE.Vector3();
+
+/* ------------------------------------------------------------------ */
+/* Spotlight isolation — during each dossier stop the featured part    */
+/* keeps its light while every other component falls into shadow.      */
+/* Materials are un-shared per component so dimming is independent;    */
+/* dimming scales color/env/emissive (no transparency sorting risks).  */
+/* ------------------------------------------------------------------ */
+
+interface DimmableMat {
+  mat: THREE.MeshPhysicalMaterial;
+  color0: THREE.Color;
+  env0: number;
+  emissive0: number;
+}
+const componentMats = new Map<string, DimmableMat[]>();
+const componentMeshes = new Map<string, THREE.Mesh[]>();
+{
+  const componentIds = new Set(Object.keys(runtime.nodes));
+  for (const [id, node] of Object.entries(runtime.nodes)) {
+    const mats: DimmableMat[] = [];
+    const meshes: THREE.Mesh[] = [];
+    const clones = new Map<THREE.Material, THREE.MeshPhysicalMaterial>();
+    const walk = (o: THREE.Object3D) => {
+      if (o !== node && componentIds.has(o.name)) return; // nested component boundary
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && mesh.material) {
+        meshes.push(mesh);
+        const src = mesh.material as THREE.MeshPhysicalMaterial;
+        let clone = clones.get(src);
+        if (!clone) {
+          clone = src.clone();
+          clones.set(src, clone);
+          mats.push({
+            mat: clone,
+            color0: clone.color.clone(),
+            env0: clone.envMapIntensity ?? 1,
+            emissive0: clone.emissiveIntensity ?? 1,
+          });
+        }
+        mesh.material = clone;
+      }
+      for (const c of o.children) walk(c);
+    };
+    walk(node);
+    if (mats.length) componentMats.set(id, mats);
+    if (meshes.length) componentMeshes.set(id, meshes);
+  }
+}
+
+const focusScratch = new Map<string, number>();
+const spotFocus = new THREE.Vector3();
+
+/** Continuous, scrub-deterministic focus field over the dossier tour. */
+function applySpotIsolation(q: number) {
+  const n = DOSSIER.length;
+  const halfW = 1 / (n + 1);
+  let globalDim = 0;
+  focusScratch.clear();
+  spotFocus.set(0, 0, 0);
+  let wSum = 0;
+  for (let i = 0; i < n; i++) {
+    const c = (i + 0.72) / (n + 1);
+    const w = Math.max(0, 1 - Math.abs(q - c) / halfW); // triangular falloff per stop
+    if (w <= 0) continue;
+    globalDim = Math.max(globalDim, w);
+    for (const id of DOSSIER[i].feature) {
+      focusScratch.set(id, Math.max(focusScratch.get(id) ?? 0, w));
+    }
+    spotFocus.addScaledVector(new THREE.Vector3(...DOSSIER[i].anchor), w);
+    wSum += w;
+  }
+  if (wSum > 0) spotFocus.divideScalar(wSum);
+  const shadowFloor = 1 - 0.9 * globalDim; // non-featured parts sink to 10 %
+  for (const [id, mats] of componentMats) {
+    const feature = focusScratch.get(id) ?? 0;
+    const f = shadowFloor + (1 - shadowFloor) * feature;
+    for (const d of mats) {
+      d.mat.color.copy(d.color0).multiplyScalar(f);
+      d.mat.envMapIntensity = d.env0 * f;
+      if (d.mat.emissiveIntensity !== undefined) d.mat.emissiveIntensity = d.emissive0 * f;
+    }
+  }
+  // the isolation spot literally lights only the featured part: featured meshes
+  // join layer 1 while their weight is meaningful (isoSpot is dim when they join,
+  // so membership changes are invisible — the effect itself stays continuous)
+  for (const [id, meshes] of componentMeshes) {
+    const on = (focusScratch.get(id) ?? 0) > 0.05;
+    for (const m of meshes) {
+      if (on) m.layers.enable(1);
+      else m.layers.disable(1);
+    }
+  }
+  return { globalDim, wSum };
+}
 
 /* C1-continuous camera path: cubic Hermite with Catmull-Rom tangents over
    non-uniform knots — removes the per-segment ease pumping (velocity no
@@ -293,7 +393,6 @@ function applyState() {
 
   // spotlight physically tracks the watch; the studio rig fades in for inspection
   spot.target.position.set(0, pose.y * 0.9, pose.z * 0.9);
-  spot.target.updateMatrixWorld();
   spot.position.set(1.9, 6.8 + pose.y * 0.35, 3.1 + pose.z * 0.55);
   const inspect = smooth01((p - 0.34) / 0.16); // studio ramp as disassembly begins
   spot.angle = 0.37 + inspect * 0.22;
@@ -303,6 +402,27 @@ function applyState() {
   fill.intensity = 0.24 * (0.2 + 0.8 * inspect);
   hemi.intensity = 0.22 * (0.25 + 0.75 * inspect);
   scene.environmentIntensity = 0.38 + 0.62 * inspect;
+
+  // dossier spotlight isolation: featured part stays lit, the rest sinks into
+  // shadow, and the physical spot swings onto the subject — all pure f(scroll)
+  const { globalDim } = applySpotIsolation(state.tour);
+  if (globalDim > 0) {
+    const studio = 1 - 0.62 * globalDim;
+    key.intensity *= studio;
+    rim.intensity *= studio;
+    fill.intensity *= studio;
+    hemi.intensity *= studio;
+    scene.environmentIntensity *= 1 - 0.5 * globalDim;
+    // scene spot hands over to the isolation spot aimed at the subject
+    spot.intensity *= 1 - 0.85 * globalDim;
+    isoSpot.position.set(spotFocus.x + 1.4, spotFocus.y + 4.6, spotFocus.z + 2.4);
+    isoSpot.target.position.copy(spotFocus);
+    isoSpot.target.updateMatrixWorld();
+    isoSpot.intensity = 620 * globalDim;
+  } else {
+    isoSpot.intensity = 0;
+  }
+  spot.target.updateMatrixWorld();
 
   // camera: the dossier tour takes over past the story's end. Blend over the
   // first 3% of the tour — identical keys make it invisible on slow scrolls,
