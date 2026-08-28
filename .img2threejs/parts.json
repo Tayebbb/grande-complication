@@ -1,41 +1,240 @@
 {
   "model": "perpetual-calendar-chronograph",
   "parts": [
-    {"name": "strap-assembly", "kind": "container", "module": "strap-assembly", "triangles": 0},
-    {"name": "case-assembly", "kind": "container", "module": "case-assembly", "triangles": 0},
-    {"name": "dial-assembly", "kind": "container", "module": "dial-assembly", "triangles": 0},
-    {"name": "hand-assembly", "kind": "container", "module": "hand-assembly", "triangles": 0},
-    {"name": "root", "kind": "container", "module": "root", "triangles": 0},
-    {"name": "case-main", "kind": "part", "module": "case-main", "triangles": 2816},
-    {"name": "bezel", "kind": "part", "module": "bezel", "triangles": 2048},
-    {"name": "crystal", "kind": "part", "module": "crystal", "triangles": 3072},
-    {"name": "case-back", "kind": "part", "module": "case-back", "triangles": 1152},
-    {"name": "movement-plate", "kind": "part", "module": "movement-plate", "triangles": 640},
-    {"name": "lugs", "kind": "part", "module": "lugs", "triangles": 1776},
-    {"name": "crown", "kind": "part", "module": "crown", "triangles": 1008},
-    {"name": "pusher-upper", "kind": "part", "module": "pusher-upper", "triangles": 840},
-    {"name": "pusher-lower", "kind": "part", "module": "pusher-lower", "triangles": 840},
-    {"name": "dial-plate", "kind": "part", "module": "dial-plate", "triangles": 3124},
-    {"name": "rehaut-ring", "kind": "part", "module": "rehaut-ring", "triangles": 768},
-    {"name": "hour-markers", "kind": "part", "module": "hour-markers", "triangles": 160},
-    {"name": "dial-apertures", "kind": "part", "module": "dial-apertures", "triangles": 196},
-    {"name": "dial-round-windows", "kind": "part", "module": "dial-round-windows", "triangles": 1344},
-    {"name": "subdials", "kind": "container", "module": "subdials", "triangles": 0},
-    {"name": "subdial-left", "kind": "part", "module": "subdial-left", "triangles": 1088},
-    {"name": "subdial-right", "kind": "part", "module": "subdial-right", "triangles": 1088},
-    {"name": "date-subdial", "kind": "part", "module": "date-subdial", "triangles": 64},
-    {"name": "moonphase", "kind": "part", "module": "moonphase", "triangles": 48},
-    {"name": "hand-hour", "kind": "part", "module": "hand-hour", "triangles": 336},
-    {"name": "hand-minute", "kind": "part", "module": "hand-minute", "triangles": 336},
-    {"name": "hand-chrono", "kind": "part", "module": "hand-chrono", "triangles": 184},
-    {"name": "subhand-left", "kind": "part", "module": "subhand-left", "triangles": 336},
-    {"name": "subhand-right", "kind": "part", "module": "subhand-right", "triangles": 336},
-    {"name": "hand-date", "kind": "part", "module": "hand-date", "triangles": 336},
-    {"name": "pinion-cap", "kind": "part", "module": "pinion-cap", "triangles": 460},
-    {"name": "strap-upper", "kind": "part", "module": "strap-upper", "triangles": 6100},
-    {"name": "stitch-upper", "kind": "part", "module": "stitch-upper", "triangles": 5440},
-    {"name": "strap-lower", "kind": "part", "module": "strap-lower", "triangles": 6100},
-    {"name": "stitch-lower", "kind": "part", "module": "stitch-lower", "triangles": 8160}
+    {
+      "name": "strap-assembly",
+      "kind": "container",
+      "module": "strap-assembly",
+      "triangles": 0
+    },
+    {
+      "name": "case-assembly",
+      "kind": "container",
+      "module": "case-assembly",
+      "triangles": 0
+    },
+    {
+      "name": "dial-assembly",
+      "kind": "container",
+      "module": "dial-assembly",
+      "triangles": 0
+    },
+    {
+      "name": "hand-assembly",
+      "kind": "container",
+      "module": "hand-assembly",
+      "triangles": 0
+    },
+    {
+      "name": "root",
+      "kind": "container",
+      "module": "root",
+      "triangles": 0
+    },
+    {
+      "name": "case-main",
+      "kind": "part",
+      "module": "case-main",
+      "triangles": 2816
+    },
+    {
+      "name": "bezel",
+      "kind": "part",
+      "module": "bezel",
+      "triangles": 2048
+    },
+    {
+      "name": "crystal",
+      "kind": "part",
+      "module": "crystal",
+      "triangles": 3072
+    },
+    {
+      "name": "case-back",
+      "kind": "part",
+      "module": "case-back",
+      "triangles": 1152
+    },
+    {
+      "name": "movement-plate",
+      "kind": "part",
+      "module": "movement-plate",
+      "triangles": 1476
+    },
+    {
+      "name": "lugs",
+      "kind": "part",
+      "module": "lugs",
+      "triangles": 1776
+    },
+    {
+      "name": "crown",
+      "kind": "part",
+      "module": "crown",
+      "triangles": 1008
+    },
+    {
+      "name": "pusher-upper",
+      "kind": "part",
+      "module": "pusher-upper",
+      "triangles": 840
+    },
+    {
+      "name": "pusher-lower",
+      "kind": "part",
+      "module": "pusher-lower",
+      "triangles": 840
+    },
+    {
+      "name": "dial-plate",
+      "kind": "part",
+      "module": "dial-plate",
+      "triangles": 3124
+    },
+    {
+      "name": "rehaut-ring",
+      "kind": "part",
+      "module": "rehaut-ring",
+      "triangles": 768
+    },
+    {
+      "name": "hour-markers",
+      "kind": "part",
+      "module": "hour-markers",
+      "triangles": 160
+    },
+    {
+      "name": "dial-apertures",
+      "kind": "part",
+      "module": "dial-apertures",
+      "triangles": 196
+    },
+    {
+      "name": "dial-round-windows",
+      "kind": "part",
+      "module": "dial-round-windows",
+      "triangles": 1344
+    },
+    {
+      "name": "subdials",
+      "kind": "container",
+      "module": "subdials",
+      "triangles": 0
+    },
+    {
+      "name": "subdial-left",
+      "kind": "part",
+      "module": "subdial-left",
+      "triangles": 1088
+    },
+    {
+      "name": "subdial-right",
+      "kind": "part",
+      "module": "subdial-right",
+      "triangles": 1088
+    },
+    {
+      "name": "date-subdial",
+      "kind": "part",
+      "module": "date-subdial",
+      "triangles": 64
+    },
+    {
+      "name": "moonphase",
+      "kind": "part",
+      "module": "moonphase",
+      "triangles": 48
+    },
+    {
+      "name": "hand-hour",
+      "kind": "part",
+      "module": "hand-hour",
+      "triangles": 336
+    },
+    {
+      "name": "hand-minute",
+      "kind": "part",
+      "module": "hand-minute",
+      "triangles": 336
+    },
+    {
+      "name": "hand-chrono",
+      "kind": "part",
+      "module": "hand-chrono",
+      "triangles": 184
+    },
+    {
+      "name": "subhand-left",
+      "kind": "part",
+      "module": "subhand-left",
+      "triangles": 336
+    },
+    {
+      "name": "subhand-right",
+      "kind": "part",
+      "module": "subhand-right",
+      "triangles": 336
+    },
+    {
+      "name": "hand-date",
+      "kind": "part",
+      "module": "hand-date",
+      "triangles": 336
+    },
+    {
+      "name": "pinion-cap",
+      "kind": "part",
+      "module": "pinion-cap",
+      "triangles": 460
+    },
+    {
+      "name": "strap-upper",
+      "kind": "part",
+      "module": "strap-upper",
+      "triangles": 6100
+    },
+    {
+      "name": "stitch-upper",
+      "kind": "part",
+      "module": "stitch-upper",
+      "triangles": 5440
+    },
+    {
+      "name": "strap-lower",
+      "kind": "part",
+      "module": "strap-lower",
+      "triangles": 6100
+    },
+    {
+      "name": "stitch-lower",
+      "kind": "part",
+      "module": "stitch-lower",
+      "triangles": 8160
+    },
+    {
+      "name": "gear-train",
+      "kind": "part",
+      "module": "gear-train",
+      "triangles": 1936
+    },
+    {
+      "name": "balance-wheel",
+      "kind": "part",
+      "module": "balance-wheel",
+      "triangles": 3876
+    },
+    {
+      "name": "mainspring-barrel",
+      "kind": "part",
+      "module": "mainspring-barrel",
+      "triangles": 2468
+    },
+    {
+      "name": "movement-screws",
+      "kind": "part",
+      "module": "movement-screws",
+      "triangles": 192
+    }
   ],
   "unnamedMeshes": 0,
   "integralMeshes": 20

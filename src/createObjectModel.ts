@@ -25,7 +25,6 @@ import {
   buildBezel,
   buildCrystal,
   buildCaseBack,
-  buildMovementPlate,
   buildLug,
   LUG_PLACEMENTS,
   buildCrownGroup,
@@ -44,6 +43,7 @@ import {
   buildSubdialWell,
   mergeGeometries,
 } from './model/parts';
+import { buildMovement } from './model/movement';
 
 export type Fidelity = 'blockout' | 'structural' | 'form' | 'full';
 
@@ -80,9 +80,9 @@ export const EXPLOSION: Record<string, ExplodeMeta> = {
   bezel:                { axis: [0, 0.119, 0.993], distance: 2.7,  order: 2,  label: 'BEZEL',         description: 'Concave polished front ring' },
   'rehaut-ring':        { axis: [0, 0.08, 0.997],  distance: 2.2,  order: 3,  label: 'REHAUT',        description: 'Inner trim ring' },
   'pinion-cap':         { axis: [0, 0, 1],  distance: 1.3,  order: 4,  label: '',              description: 'Center cap' },
-  'hand-chrono':        { axis: [0, 0, 1],  distance: 1.15, order: 5,  label: 'SECONDS',       description: 'Chronograph seconds needle' },
-  'hand-minute':        { axis: [0, 0, 1],  distance: 0.95, order: 6,  label: 'MINUTE',        description: 'Leaf minute hand' },
-  'hand-hour':          { axis: [0, 0, 1],  distance: 0.78, order: 7,  label: 'HOUR',          description: 'Leaf hour hand' },
+  'hand-chrono':        { axis: [0.12, 0.06, 0.99], distance: 1.25, order: 5,  label: 'SECONDS',  description: 'Chronograph seconds needle' },
+  'hand-minute':        { axis: [-0.1, 0.08, 0.99], distance: 1.05, order: 6,  label: 'MINUTE',   description: 'Leaf minute hand' },
+  'hand-hour':          { axis: [0.08, -0.1, 0.99], distance: 0.85, order: 7,  label: 'HOUR',     description: 'Leaf hour hand' },
   'subhand-left':       { axis: [0, 0, 1],  distance: 0.6,  order: 8,  label: '',              description: 'Small seconds hand' },
   'subhand-right':      { axis: [0, 0, 1],  distance: 0.6,  order: 8,  label: '',              description: '30-min counter hand' },
   'hand-date':          { axis: [0, 0, 1],  distance: 0.6,  order: 8,  label: '',              description: 'Date hand' },
@@ -93,9 +93,14 @@ export const EXPLOSION: Record<string, ExplodeMeta> = {
   'date-subdial':       { axis: [0, 0, 1],  distance: 0.42, order: 11, label: 'DATE RING',     description: 'Perpetual date arc' },
   moonphase:            { axis: [0, 0, -1], distance: 0.22, order: 12, label: 'MOONPHASE',     description: 'Navy lacquer moon disc' },
   'dial-plate':         { axis: [0, 0, 1],  distance: 0.4,  order: 13, label: 'DIAL',          description: 'Sunburst gradient plate' },
-  'movement-plate':     { axis: [0, 0, -1], distance: 0.9,  order: 14, label: 'MOVEMENT',      description: 'Inferred calibre layer' },
-  'case-back':          { axis: [0, 0, -1], distance: 2.0,  order: 15, label: 'CASE BACK',     description: 'Screw-down rear cover' },
-  crown:                { axis: [1, 0, 0],  distance: 1.3,  order: 16, label: 'CROWN',         description: 'Fluted winding crown' },
+  // calibre drops down-right into open space (clear of the strap column), internals fan off it
+  'movement-plate':     { axis: [0.55, -0.68, -0.48], distance: 3.35, order: 14, label: 'MOVEMENT', description: 'Mechanical calibre' },
+  'gear-train':         { axis: [0.22, 0.14, 0.96], distance: 0.62, order: 19, label: 'GEAR TRAIN', description: 'Going train, cut teeth' },
+  'balance-wheel':      { axis: [0.05, -0.35, 0.94], distance: 0.7, order: 19, label: 'BALANCE',   description: 'Balance wheel + hairspring' },
+  'mainspring-barrel':  { axis: [0.35, -0.12, 0.93], distance: 0.55, order: 19, label: 'BARREL',    description: 'Mainspring barrel' },
+  'movement-screws':    { axis: [0.15, -0.3, -0.94], distance: 0.7, order: 20, label: '',           description: 'Bridge screws' },
+  'case-back':          { axis: [0.68, -0.4, -0.62], distance: 4.6, order: 15, label: 'CASE BACK', description: 'Screw-down rear cover' },
+  crown:                { axis: [1, 0, 0],  distance: 1.6,  order: 16, label: 'CROWN',         description: 'Fluted winding crown' },
   'pusher-upper':       { axis: [0.866, 0.5, 0],  distance: 0.95, order: 17, label: 'UPPER PUSHER', description: 'Chronograph start/stop' },
   'pusher-lower':       { axis: [0.866, -0.5, 0], distance: 0.95, order: 17, label: 'LOWER PUSHER', description: 'Chronograph reset' },
   'strap-upper':        { axis: [0, 1, 0],  distance: 0.55, order: 18, label: 'STRAP',         description: 'Braided calfskin, upper' },
@@ -374,10 +379,31 @@ export function createPerpetualCalendarChronographModel(
 
   const movement = node('movement-plate', 'MOVEMENT', caseAssembly, new THREE.Vector3());
   {
-    const mesh = new THREE.Mesh(buildMovementPlate(), mats.caseBrushed);
-    mesh.name = 'movement-plate-mesh';
-    movement.add(mesh);
-    registerMesh('movement-plate', mesh);
+    const calibre = buildMovement({ plateBrushed: mats.caseBrushed, polished: mats.casePolished });
+    // each calibre part becomes its own explodable component node
+    const sub: Array<[string, THREE.Group]> = [
+      ['movement-base', calibre.parts.plate],
+      ['gear-train', calibre.parts.gearTrain],
+      ['balance-wheel', calibre.parts.balance],
+      ['mainspring-barrel', calibre.parts.barrel],
+      ['movement-screws', calibre.parts.screws],
+    ];
+    for (const [id, grp] of sub) {
+      if (id === 'movement-base') {
+        // base plate rides the movement-plate node itself
+        grp.name = 'movement-base';
+        movement.add(grp);
+        const first = grp.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+        if (first) registerMesh('movement-plate', first);
+        continue;
+      }
+      const n = node(id, id.toUpperCase(), movement, new THREE.Vector3());
+      grp.name = `${id}-parts`; // avoid colliding with the component node name
+      n.add(grp);
+      const first = grp.children.find((c) => (c as THREE.Mesh).isMesh || (c as THREE.InstancedMesh).isInstancedMesh) as THREE.Mesh | undefined;
+      if (first) registerMesh(id, first);
+    }
+    root.userData.spinMechanism = calibre.spin;
   }
 
   const lugs = node('lugs', 'LUGS', caseAssembly, new THREE.Vector3());
@@ -683,17 +709,19 @@ const EXPLODE_WINDOWS: Record<number, [number, number]> = {
   10: [0.25, 0.15], // apertures/windows — THE DIAL
   11: [0.3, 0.15],  // subdials/date — THE DIAL
   12: [0.34, 0.14], // moon — THE DIAL
-  13: [0.38, 0.16], // dial plate — late DIAL
-  4: [0.43, 0.12],  // pinion cap — THE HANDS
-  5: [0.45, 0.13],  // chrono — THE HANDS
-  6: [0.48, 0.13],  // minute — THE HANDS
-  7: [0.51, 0.13],  // hour — THE HANDS
-  8: [0.54, 0.12],  // small hands — THE HANDS
+  4: [0.42, 0.1],   // pinion cap — THE HANDS
+  5: [0.44, 0.12],  // chrono — THE HANDS
+  6: [0.46, 0.12],  // minute — THE HANDS
+  7: [0.49, 0.12],  // hour — THE HANDS
+  8: [0.52, 0.11],  // small hands — THE HANDS
+  13: [0.5, 0.15],  // dial plate rises after the hand stack has cleared
   16: [0.62, 0.13], // crown — THE CONTROL
   17: [0.66, 0.13], // pushers — THE CONTROL
-  14: [0.78, 0.13], // movement — ARCHITECTURE
-  15: [0.82, 0.14], // case back — ARCHITECTURE
+  14: [0.76, 0.15], // movement — ARCHITECTURE
+  15: [0.8, 0.15],  // case back — ARCHITECTURE
   18: [0.86, 0.12], // straps — ARCHITECTURE→WHOLE
+  19: [0.88, 0.11], // calibre internals lift off the plate — THE WHOLE
+  20: [0.92, 0.08], // bridge screws extract — THE WHOLE
 };
 
 /** Per-component eased local progress for master progress t (0..1). */

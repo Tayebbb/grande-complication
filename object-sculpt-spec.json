@@ -3110,9 +3110,9 @@
       "confidence": 0.4,
       "primitive": "cylinder",
       "topologyClass": "assembled-solid",
-      "topologyRationale": "Thin cylindrical plate standing in for the invisible movement; conventional layer for the exploded story, labeled inferred.",
+      "topologyRationale": "Mechanical calibre stack-in for the exploded story: brushed main plate + bridges with jewels, going train with cut-tooth spur gears, balance wheel + hairspring, mainspring barrel, hex bridge screws. Convention-derived (movement invisible in reference).",
       "geometryDescriptor": {
-        "topologyIntent": "r1.58 disc, brushed dark metal, shallow relief rings hinting bridges; NOT observed - convention",
+        "topologyIntent": "module build (src/model/movement.ts): plate r1.52 + rounded-outline bridge extrusions; 4 Shape-extruded spur gears (28/22/18/24 teeth) with arbors; torus balance + Archimedean hairspring tube; barrel drum + spiral groove + click wheel; 8 instanced hex screws",
         "edgeTreatment": {
           "type": "bevel",
           "bevelRadius": 0.015,
@@ -3218,6 +3218,586 @@
       "material": "mat-case-brushed",
       "materialLayers": [
         "mat-case-brushed"
+      ],
+      "deformations": [],
+      "joints": [],
+      "seams": [],
+      "localFeatures": [],
+      "surfaceDetail": {
+        "macroRoughness": 0.4,
+        "microRoughness": 0.2,
+        "bumpAmplitude": 0.01,
+        "normalPattern": "circular brushing",
+        "displacementPattern": "none",
+        "occlusionPattern": "ring grooves",
+        "edgeWearPattern": "none",
+        "notes": "inferred layer"
+      },
+      "evidenceRefs": [
+        "full-object"
+      ],
+      "details": [],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(214, 216, 219, 1)",
+        "secondaryAlbedo": "rgba(194, 197, 201, 1)",
+        "materialClass": "metal",
+        "materialClassConfidence": 0.9
+      }
+    },
+    {
+      "id": "gear-train",
+      "name": "Going Train (4 spur gears)",
+      "level": "micro",
+      "role": "calibre-part",
+      "importance": 0.7,
+      "confidence": 0.4,
+      "primitive": "extrude",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Repeated cut-tooth spur gears (Shape extrusions) on polished arbors; convention-derived calibre detail.",
+      "geometryDescriptor": {
+        "topologyIntent": "4 gears r0.42/0.30/0.24/0.34 with 28/22/18/24 trapezoidal teeth + arbors",
+        "edgeTreatment": {
+          "type": "bevel",
+          "bevelRadius": 0.015,
+          "segments": 2
+        },
+        "deformationStack": [],
+        "uvStrategy": "generated procedural coordinates",
+        "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"
+      },
+      "parent": "movement-plate",
+      "attachment": {
+        "parentSocket": "movement-plate-face",
+        "localStart": [
+          0.1,
+          0.1,
+          -0.3
+        ],
+        "localEnd": [
+          0.1,
+          0.1,
+          -0.15
+        ],
+        "contactType": "socket",
+        "embedDepth": 0.03,
+        "gapTolerance": 0.01
+      },
+      "dimensions": {
+        "width": 1.2,
+        "height": 1.2,
+        "depth": 0.15,
+        "units": "world (1 unit = 10 mm)",
+        "confidence": 0.4
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "rotating-part",
+        "pivot": {
+          "mode": "custom",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        },
+        "transformChannels": {
+          "translate": true,
+          "rotate": true,
+          "scale": false,
+          "bend": false,
+          "twist": false,
+          "detach": true,
+          "visibility": true,
+          "materialState": true
+        },
+        "sockets": [],
+        "collider": {
+          "type": "cylinder",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "isTrigger": false,
+          "notes": "simplified proxy for hover picking"
+        },
+        "constraints": [],
+        "destruction": {
+          "breakable": false,
+          "fractureGroup": "gear-train",
+          "seamRefs": [],
+          "detachableFragments": [],
+          "breakImpulse": 0.0,
+          "debrisMaterial": "mat-case-brushed"
+        }
+      },
+      "material": "mat-case-brushed",
+      "materialLayers": [
+        "mat-case-brushed",
+        "mat-case-polished"
+      ],
+      "deformations": [],
+      "joints": [],
+      "seams": [],
+      "localFeatures": [],
+      "surfaceDetail": {
+        "macroRoughness": 0.4,
+        "microRoughness": 0.2,
+        "bumpAmplitude": 0.01,
+        "normalPattern": "circular brushing",
+        "displacementPattern": "none",
+        "occlusionPattern": "ring grooves",
+        "edgeWearPattern": "none",
+        "notes": "inferred layer"
+      },
+      "evidenceRefs": [
+        "full-object"
+      ],
+      "details": [],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(214, 216, 219, 1)",
+        "secondaryAlbedo": "rgba(194, 197, 201, 1)",
+        "materialClass": "metal",
+        "materialClassConfidence": 0.9
+      }
+    },
+    {
+      "id": "balance-wheel",
+      "name": "Balance Wheel + Hairspring",
+      "level": "micro",
+      "role": "calibre-part",
+      "importance": 0.7,
+      "confidence": 0.4,
+      "primitive": "extrude",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Torus rim + spokes + staff with Archimedean spiral hairspring tube; the visual oscillator.",
+      "geometryDescriptor": {
+        "topologyIntent": "torus r0.3 rim, 3 spokes, 3.5-turn hairspring tube above",
+        "edgeTreatment": {
+          "type": "bevel",
+          "bevelRadius": 0.015,
+          "segments": 2
+        },
+        "deformationStack": [],
+        "uvStrategy": "generated procedural coordinates",
+        "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"
+      },
+      "parent": "movement-plate",
+      "attachment": {
+        "parentSocket": "movement-plate-face",
+        "localStart": [
+          -0.7,
+          -0.62,
+          -0.3
+        ],
+        "localEnd": [
+          -0.7,
+          -0.62,
+          -0.12
+        ],
+        "contactType": "socket",
+        "embedDepth": 0.03,
+        "gapTolerance": 0.01
+      },
+      "dimensions": {
+        "width": 0.7,
+        "height": 0.7,
+        "depth": 0.2,
+        "units": "world (1 unit = 10 mm)",
+        "confidence": 0.4
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "rotating-part",
+        "pivot": {
+          "mode": "custom",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        },
+        "transformChannels": {
+          "translate": true,
+          "rotate": true,
+          "scale": false,
+          "bend": false,
+          "twist": false,
+          "detach": true,
+          "visibility": true,
+          "materialState": true
+        },
+        "sockets": [],
+        "collider": {
+          "type": "cylinder",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "isTrigger": false,
+          "notes": "simplified proxy for hover picking"
+        },
+        "constraints": [],
+        "destruction": {
+          "breakable": false,
+          "fractureGroup": "balance-wheel",
+          "seamRefs": [],
+          "detachableFragments": [],
+          "breakImpulse": 0.0,
+          "debrisMaterial": "mat-case-brushed"
+        }
+      },
+      "material": "mat-case-polished",
+      "materialLayers": [
+        "mat-case-polished",
+        "mat-case-polished"
+      ],
+      "deformations": [],
+      "joints": [],
+      "seams": [],
+      "localFeatures": [],
+      "surfaceDetail": {
+        "macroRoughness": 0.4,
+        "microRoughness": 0.2,
+        "bumpAmplitude": 0.01,
+        "normalPattern": "circular brushing",
+        "displacementPattern": "none",
+        "occlusionPattern": "ring grooves",
+        "edgeWearPattern": "none",
+        "notes": "inferred layer"
+      },
+      "evidenceRefs": [
+        "full-object"
+      ],
+      "details": [],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(214, 216, 219, 1)",
+        "secondaryAlbedo": "rgba(194, 197, 201, 1)",
+        "materialClass": "metal",
+        "materialClassConfidence": 0.9
+      }
+    },
+    {
+      "id": "mainspring-barrel",
+      "name": "Mainspring Barrel",
+      "level": "micro",
+      "role": "calibre-part",
+      "importance": 0.6,
+      "confidence": 0.4,
+      "primitive": "extrude",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Drum cylinder with spiral groove hint + click wheel; power-reserve layer of the calibre stack.",
+      "geometryDescriptor": {
+        "topologyIntent": "drum r0.38 h0.12 + gold spiral + 14-tooth click wheel",
+        "edgeTreatment": {
+          "type": "bevel",
+          "bevelRadius": 0.015,
+          "segments": 2
+        },
+        "deformationStack": [],
+        "uvStrategy": "generated procedural coordinates",
+        "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"
+      },
+      "parent": "movement-plate",
+      "attachment": {
+        "parentSocket": "movement-plate-face",
+        "localStart": [
+          0.55,
+          -0.05,
+          -0.3
+        ],
+        "localEnd": [
+          0.55,
+          -0.05,
+          -0.2
+        ],
+        "contactType": "socket",
+        "embedDepth": 0.03,
+        "gapTolerance": 0.01
+      },
+      "dimensions": {
+        "width": 0.8,
+        "height": 0.8,
+        "depth": 0.16,
+        "units": "world (1 unit = 10 mm)",
+        "confidence": 0.4
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "explode-layer",
+        "pivot": {
+          "mode": "custom",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        },
+        "transformChannels": {
+          "translate": true,
+          "rotate": true,
+          "scale": false,
+          "bend": false,
+          "twist": false,
+          "detach": true,
+          "visibility": true,
+          "materialState": true
+        },
+        "sockets": [],
+        "collider": {
+          "type": "cylinder",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "isTrigger": false,
+          "notes": "simplified proxy for hover picking"
+        },
+        "constraints": [],
+        "destruction": {
+          "breakable": false,
+          "fractureGroup": "mainspring-barrel",
+          "seamRefs": [],
+          "detachableFragments": [],
+          "breakImpulse": 0.0,
+          "debrisMaterial": "mat-case-brushed"
+        }
+      },
+      "material": "mat-case-brushed",
+      "materialLayers": [
+        "mat-case-brushed",
+        "mat-case-polished"
+      ],
+      "deformations": [],
+      "joints": [],
+      "seams": [],
+      "localFeatures": [],
+      "surfaceDetail": {
+        "macroRoughness": 0.4,
+        "microRoughness": 0.2,
+        "bumpAmplitude": 0.01,
+        "normalPattern": "circular brushing",
+        "displacementPattern": "none",
+        "occlusionPattern": "ring grooves",
+        "edgeWearPattern": "none",
+        "notes": "inferred layer"
+      },
+      "evidenceRefs": [
+        "full-object"
+      ],
+      "details": [],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(214, 216, 219, 1)",
+        "secondaryAlbedo": "rgba(194, 197, 201, 1)",
+        "materialClass": "metal",
+        "materialClassConfidence": 0.9
+      }
+    },
+    {
+      "id": "movement-screws",
+      "name": "Bridge Screws (8x hex)",
+      "level": "micro",
+      "role": "calibre-part",
+      "importance": 0.5,
+      "confidence": 0.4,
+      "primitive": "extrude",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Instanced hex-head screws fastening plate and bridges; nuts-and-bolts read in the exploded view.",
+      "geometryDescriptor": {
+        "topologyIntent": "InstancedMesh hex cylinder r0.03 h0.035, 5 perimeter + 3 bridge instances",
+        "edgeTreatment": {
+          "type": "bevel",
+          "bevelRadius": 0.015,
+          "segments": 2
+        },
+        "deformationStack": [],
+        "uvStrategy": "generated procedural coordinates",
+        "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"
+      },
+      "parent": "movement-plate",
+      "attachment": {
+        "parentSocket": "movement-plate-face",
+        "localStart": [
+          1.35,
+          0,
+          -0.3
+        ],
+        "localEnd": [
+          1.35,
+          0,
+          -0.24
+        ],
+        "contactType": "socket",
+        "embedDepth": 0.03,
+        "gapTolerance": 0.01
+      },
+      "dimensions": {
+        "width": 0.06,
+        "height": 0.06,
+        "depth": 0.035,
+        "units": "world (1 unit = 10 mm)",
+        "confidence": 0.4
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "explode-layer",
+        "pivot": {
+          "mode": "custom",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        },
+        "transformChannels": {
+          "translate": true,
+          "rotate": true,
+          "scale": false,
+          "bend": false,
+          "twist": false,
+          "detach": true,
+          "visibility": true,
+          "materialState": true
+        },
+        "sockets": [],
+        "collider": {
+          "type": "cylinder",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "isTrigger": false,
+          "notes": "simplified proxy for hover picking"
+        },
+        "constraints": [],
+        "destruction": {
+          "breakable": false,
+          "fractureGroup": "movement-screws",
+          "seamRefs": [],
+          "detachableFragments": [],
+          "breakImpulse": 0.0,
+          "debrisMaterial": "mat-case-brushed"
+        }
+      },
+      "material": "mat-case-polished",
+      "materialLayers": [
+        "mat-case-polished",
+        "mat-case-polished"
       ],
       "deformations": [],
       "joints": [],
@@ -9485,10 +10065,10 @@
   "performanceBudget": {
     "qualityPriority": "reference-fidelity",
     "targetTriangles": 220000,
-    "maxDrawCalls": 120,
+    "maxDrawCalls": 140,
     "textureSize": 2048,
     "fpsTarget": 60,
-    "optimizationPolicy": "Reach accepted visual fidelity first, then optimize without removing reference-critical geometry or surface layers."
+    "optimizationPolicy": "Reach accepted visual fidelity first, then optimize without removing reference-critical geometry or surface layers. Calibre module adds 7 draws (127 measured at finale, 77fps)."
   },
   "lightingFromPhoto": [
     {
@@ -9615,33 +10195,33 @@
       },
       "hand-chrono": {
         "axis": [
-          0,
-          0,
-          1
+          0.12,
+          0.06,
+          0.99
         ],
-        "distance": 1.15,
+        "distance": 1.25,
         "order": 5,
         "label": "SECONDS",
         "description": "Chronograph seconds needle"
       },
       "hand-minute": {
         "axis": [
-          0,
-          0,
-          1
+          -0.1,
+          0.08,
+          0.99
         ],
-        "distance": 0.95,
+        "distance": 1.05,
         "order": 6,
         "label": "MINUTE",
         "description": "Leaf minute hand"
       },
       "hand-hour": {
         "axis": [
-          0,
-          0,
-          1
+          0.08,
+          -0.1,
+          0.99
         ],
-        "distance": 0.78,
+        "distance": 0.85,
         "order": 7,
         "label": "HOUR",
         "description": "Leaf hour hand"
@@ -9758,22 +10338,22 @@
       },
       "movement-plate": {
         "axis": [
-          0,
-          0,
-          -1
+          0.55,
+          -0.68,
+          -0.48
         ],
-        "distance": 0.9,
+        "distance": 3.35,
         "order": 14,
         "label": "MOVEMENT",
-        "description": "Inferred calibre layer"
+        "description": "Mechanical calibre"
       },
       "case-back": {
         "axis": [
-          0,
-          0,
-          -1
+          0.68,
+          -0.4,
+          -0.62
         ],
-        "distance": 2.0,
+        "distance": 4.6,
         "order": 15,
         "label": "CASE BACK",
         "description": "Screw-down rear cover"
@@ -9784,7 +10364,7 @@
           0,
           0
         ],
-        "distance": 1.3,
+        "distance": 1.6,
         "order": 16,
         "label": "CROWN",
         "description": "Fluted winding crown"
@@ -9854,6 +10434,50 @@
         "order": 0,
         "label": "LUGS",
         "description": "Integral strap anchors"
+      },
+      "gear-train": {
+        "axis": [
+          0.22,
+          0.14,
+          0.96
+        ],
+        "distance": 0.62,
+        "order": 19,
+        "label": "GEAR TRAIN",
+        "description": "Going train, cut teeth"
+      },
+      "balance-wheel": {
+        "axis": [
+          0.05,
+          -0.35,
+          0.94
+        ],
+        "distance": 0.7,
+        "order": 19,
+        "label": "BALANCE",
+        "description": "Balance wheel + hairspring"
+      },
+      "mainspring-barrel": {
+        "axis": [
+          0.35,
+          -0.12,
+          0.93
+        ],
+        "distance": 0.55,
+        "order": 19,
+        "label": "BARREL",
+        "description": "Mainspring barrel"
+      },
+      "movement-screws": {
+        "axis": [
+          0.15,
+          -0.3,
+          -0.94
+        ],
+        "distance": 0.7,
+        "order": 20,
+        "label": "",
+        "description": "Bridge screws"
       }
     },
     "stagger": {
@@ -9888,28 +10512,28 @@
           0.14
         ],
         "13": [
-          0.38,
-          0.16
+          0.5,
+          0.15
         ],
         "4": [
-          0.43,
-          0.12
+          0.42,
+          0.1
         ],
         "5": [
-          0.45,
-          0.13
+          0.44,
+          0.12
         ],
         "6": [
-          0.48,
-          0.13
+          0.46,
+          0.12
         ],
         "7": [
-          0.51,
-          0.13
+          0.49,
+          0.12
         ],
         "8": [
-          0.54,
-          0.12
+          0.52,
+          0.11
         ],
         "16": [
           0.62,
@@ -9920,16 +10544,24 @@
           0.13
         ],
         "14": [
-          0.78,
-          0.13
+          0.76,
+          0.15
         ],
         "15": [
-          0.82,
-          0.14
+          0.8,
+          0.15
         ],
         "18": [
           0.86,
           0.12
+        ],
+        "19": [
+          0.88,
+          0.11
+        ],
+        "20": [
+          0.92,
+          0.08
         ]
       }
     }

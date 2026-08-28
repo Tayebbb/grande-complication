@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from 'lenis';
 import {
   createPerpetualCalendarChronographModel,
   createPerpetualCalendarChronographEnvironment,
@@ -32,7 +33,7 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
   preserveDrawingBuffer: qaMode, // QA captures only; off in normal viewing
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -51,7 +52,7 @@ const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerH
 const key = new THREE.DirectionalLight(0xfff2e2, 2.0);
 key.position.set(-5.5, 7, 7.5);
 key.castShadow = true;
-key.shadow.mapSize.set(2048, 2048);
+key.shadow.mapSize.set(1024, 1024);
 key.shadow.bias = -0.0003;
 key.shadow.normalBias = 0.02;
 key.shadow.camera.left = key.shadow.camera.bottom = -8;
@@ -126,22 +127,55 @@ const tmpPos = new THREE.Vector3();
 const heroPosTmp = new THREE.Vector3();
 const heroTargetTmp = new THREE.Vector3();
 
+/* C1-continuous camera path: cubic Hermite with Catmull-Rom tangents over
+   non-uniform knots — removes the per-segment ease pumping (velocity no
+   longer hits zero at every keyframe). */
+const KNOTS = CAMERA_KEYS.map((k) => k.p);
+const CHANNELS: number[][] = [
+  CAMERA_KEYS.map((k) => k.az),
+  CAMERA_KEYS.map((k) => k.el),
+  CAMERA_KEYS.map((k) => k.dist),
+  CAMERA_KEYS.map((k) => k.target[0]),
+  CAMERA_KEYS.map((k) => k.target[1]),
+  CAMERA_KEYS.map((k) => k.target[2]),
+];
+
+function hermiteChannel(values: number[], i: number, t: number): number {
+  const n = values.length;
+  const t0 = KNOTS[i];
+  const t1 = KNOTS[i + 1];
+  const h = t1 - t0;
+  const v0 = values[i];
+  const v1 = values[i + 1];
+  const d = (v1 - v0) / h; // segment slope
+  const dPrev = i > 0 ? (v0 - values[i - 1]) / (t0 - KNOTS[i - 1]) : d;
+  const dNext = i < n - 2 ? (values[i + 2] - v1) / (KNOTS[i + 2] - t1) : d;
+  // Fritsch–Carlson monotone limiter: keeps C1 continuity, prevents overshoot
+  const limit = (a: number, b: number) => (a * b <= 0 ? 0 : (2 * a * b) / (a + b));
+  const m0 = limit(dPrev, d);
+  const m1 = limit(d, dNext);
+  const s = (t - t0) / h;
+  const s2 = s * s;
+  const s3 = s2 * s;
+  return (
+    (2 * s3 - 3 * s2 + 1) * v0 +
+    (s3 - 2 * s2 + s) * h * m0 +
+    (-2 * s3 + 3 * s2) * v1 +
+    (s3 - s2) * h * m1
+  );
+}
+
 function cameraAt(p: number, outPos: THREE.Vector3, outTarget: THREE.Vector3) {
-  const keys = CAMERA_KEYS;
+  const clamped = THREE.MathUtils.clamp(p, 0, 1);
   let i = 0;
-  while (i < keys.length - 2 && p > keys[i + 1].p) i++;
-  const a = keys[i];
-  const b = keys[i + 1];
-  const span = Math.max(1e-5, b.p - a.p);
-  let t = THREE.MathUtils.clamp((p - a.p) / span, 0, 1);
-  t = t * t * (3 - 2 * t); // smooth each segment
-  const az = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(a.az, b.az, t));
-  const el = THREE.MathUtils.degToRad(THREE.MathUtils.lerp(a.el, b.el, t));
-  const dist = THREE.MathUtils.lerp(a.dist, b.dist, t);
+  while (i < KNOTS.length - 2 && clamped > KNOTS[i + 1]) i++;
+  const az = THREE.MathUtils.degToRad(hermiteChannel(CHANNELS[0], i, clamped));
+  const el = THREE.MathUtils.degToRad(hermiteChannel(CHANNELS[1], i, clamped));
+  const dist = hermiteChannel(CHANNELS[2], i, clamped);
   outTarget.set(
-    THREE.MathUtils.lerp(a.target[0], b.target[0], t),
-    THREE.MathUtils.lerp(a.target[1], b.target[1], t),
-    THREE.MathUtils.lerp(a.target[2], b.target[2], t),
+    hermiteChannel(CHANNELS[3], i, clamped),
+    hermiteChannel(CHANNELS[4], i, clamped),
+    hermiteChannel(CHANNELS[5], i, clamped),
   );
   outPos.set(
     outTarget.x + Math.sin(az) * Math.cos(el) * dist,
@@ -151,6 +185,8 @@ function cameraAt(p: number, outPos: THREE.Vector3, outTarget: THREE.Vector3) {
 }
 
 let clockTime = 0;
+let spinActive = false;
+let spinTime = 0; // integrates only while the calibre is revealed — no pose snap on scrub-back
 
 function applyState() {
   const p = state.story;
@@ -162,8 +198,9 @@ function applyState() {
   stage.style.opacity = state.heroIn.toFixed(3);
 
   // explosion — one master value (spec runtimeExplosion staggering inside)
-  const explode = explosionFromStory(p) * (1 - rEase);
-  setExplosionProgress(watch, explode);
+  const explodeT = explosionFromStory(p) * (1 - rEase);
+  setExplosionProgress(watch, explodeT);
+  spinActive = explodeT > 0.55;
 
   // camera along keyframes; reassembly returns toward the hero key
   cameraAt(p, tmpPos, tmpTarget);
@@ -331,6 +368,15 @@ const progressBar = document.querySelector('.progress') as HTMLElement | null;
 const hint = document.getElementById('scroll-hint')!;
 let hintHidden = false;
 
+// buttery input: Lenis smooths the raw wheel/touch delta, ScrollTrigger scrubs on top
+let lenis: Lenis | null = null;
+if (!reducedMotion) {
+  lenis = new Lenis({ duration: 1.15, smoothWheel: true, touchMultiplier: 1.35 });
+  lenis.on('scroll', ScrollTrigger.update);
+  gsap.ticker.add((time) => lenis?.raf(time * 1000));
+  gsap.ticker.lagSmoothing(0);
+}
+
 const ctx = gsap.context(() => {
   // master pinned sequence
   ScrollTrigger.create({
@@ -338,7 +384,7 @@ const ctx = gsap.context(() => {
     start: 'top top',
     end: '+=7200',
     pin: true,
-    scrub: reducedMotion ? true : 0.8,
+    scrub: reducedMotion ? true : 0.5,
     onUpdate(self) {
       state.story = self.progress;
       progressFill.style.transform = `scaleX(${self.progress.toFixed(4)})`;
@@ -357,7 +403,7 @@ const ctx = gsap.context(() => {
     trigger: '.outro',
     start: 'top bottom',
     end: 'center center',
-    scrub: reducedMotion ? true : 0.6,
+    scrub: reducedMotion ? true : 0.5,
     onUpdate(self) {
       state.reassembly = self.progress;
     },
@@ -423,6 +469,8 @@ window.__perf = () => ({
 });
 
 let frames = 0;
+let rafId = 0;
+const spinFn = () => watch.userData.spinMechanism as ((t: number) => void) | undefined;
 function tick() {
   const dt = clock.getDelta();
   clockTime += dt;
@@ -437,19 +485,25 @@ function tick() {
   state.smX += (state.mouseX - state.smX) * 0.06;
   state.smY += (state.mouseY - state.smY) * 0.06;
   applyState();
+  if (spinActive && !reducedMotion) {
+    spinTime += dt;
+    spinFn()?.(spinTime);
+  }
   updateLabels();
   renderer.render(scene, camera);
   frames += 1;
   if (frames === 10) window.__expReady = true;
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
 }
 setStage(0);
 tick();
 
 // cleanup on page exit + Vite HMR (beforeunload does not fire on HMR)
 function teardown() {
+  cancelAnimationFrame(rafId);
   ctx.revert();
   ScrollTrigger.killAll();
+  lenis?.destroy();
   disposePerpetualCalendarChronographModel(watch);
   scene.environment?.dispose();
   renderer.dispose();
