@@ -29,12 +29,17 @@ The entire sequence is **one physical event scrubbed by scroll** — scroll down
               not a camera zoom); the surface dissolves into darkness
     HELD BEAT— a true camera plateau at inspection distance (duplicate keys)
     EXPLODE  — precision mechanical disassembly, component by component
-100% EXPLODED HERO — full assembly readable, breathes; ramp tail decelerates
+    EXPLODED HERO — full assembly readable, breathes; ramp tail decelerates
               to zero slope so reversing out of it is gentle
 THEN DOSSIER — a second scrubbed act: per-component close-up tour (see §4)
-SCROLL UP    — same timeline backward: reassemble in exact reverse order →
-              retreat → soft landing (zero-slope settle, shadow returns) →
-              final frame ≡ opening frame, verified pixel-identical
+FINALE       — after the last stop the explosion REWINDS (staggered reverse,
+              zero-slope ramp) while the camera pulls back to watch every
+              component fly home, then settles on the closing BEAUTY HERO:
+              the complete product at its most beautiful angle (classic
+              three-quarter, full studio light) with the epilogue copy over it
+SCROLL UP    — same timeline backward: everything un-plays in exact reverse →
+              reassemble → retreat → soft landing (zero-slope settle, shadow
+              returns) → final frame ≡ opening frame, verified pixel-identical
 ```
 
 ## 3. Exploded view rules
@@ -54,6 +59,7 @@ After the exploded hero, a second pinned scrub visits **every marketable compone
 - Camera close-ups must be **ray-verified against the exploded occlusion field** (anchor on measured sub-mesh world centers, sightlines through real apertures, no photobombing neighbors).
 - **Spotlight isolation:** while a stop is active, only the featured component group stays lit — everything else sinks into shadow (~10%, by darkening color/env/emissive on un-shared per-component materials — never transparency), the studio rig dims, and a dedicated isolation light on its own render layer illuminates the featured meshes only. All of it a continuous function of scroll (triangular per-stop weights) so transitions crossfade and reverse perfectly.
 - Entry and exit camera keys equal the surrounding acts' keys so the handoff is seamless in both directions; blend over the first ~3% to absorb scrub lag on fast flings.
+- **Close the journey on the whole product:** the tour's tail reassembles the product (reverse-staggered, gentle at both ends) and lands on a curated beauty key — the single most flattering angle of the complete piece — so the deepest scroll position is a finished, catalog-grade hero shot, not debris.
 
 ## 5. Lighting & physicality
 
@@ -63,7 +69,9 @@ After the exploded hero, a second pinned scrub visits **every marketable compone
 
 ## 6. Craft & platform bar
 
-- Quality target: **luxury product film + mechanical engineering visualization** — not a spinning viewer, not a generic demo. 10/10 UX: premium dark theme, serif display + tracked micro-type, restrained copy, aria-live chapter announcements, keyboard-safe, reduced-motion support (instant fades, scrub still works), responsive (aspect-ratio breakpoint stacks copy), zero console errors.
+- Quality target: **luxury product film + mechanical engineering visualization** — not a spinning viewer, not a generic demo. 10/10 UX: premium dark theme, serif display + tracked micro-type, restrained copy, aria-live chapter announcements, keyboard-safe, reduced-motion support (instant fades, scrub still works), zero console errors.
+- **Fully responsive on every device — by projection math, not CSS alone.** 3D FOV is vertical, so portrait phones crop horizontally: guarantee narrow viewports preserve ~80–90 % of the desktop's horizontal span at every camera beat — widen vertical FOV up to a distortion cap (~56°), then pull the whole camera path back proportionally; recompute on resize/rotation. Verify with rendered frames across a device matrix (small phone, large phone, tablet portrait, landscape phone, desktop) at every key beat, including the exploded state and all close-up stops.
+- Real-device hardening: `100dvh` section heights (URL-bar safe), ignore mobile browser-chrome resizes for scroll-pin layout, refresh pixel ratio on resize, native touch scroll with damped scrub. Phone UI: hide secondary chrome (chapter rails) on small screens, panels become scrollable bottom sheets, type floors ~10px.
 - Clean teardown (HMR + beforeunload): kill triggers, tickers, renderer, dispose geometry/materials.
 - Legal: never ship a real third-party trademark on the product — swap to a neutral marque.
 
@@ -74,7 +82,8 @@ Dispatch separate agents and iterate until honest scores ≥ 9/10:
 1. **Builder agents** for heavy construction (detail modules, sub-assemblies) with explicit part lists and tri budgets.
 2. **Research agents** for real-world architecture and material facts before modeling/writing.
 3. **Critic agents (read-only)** each round, scoring 1–10 with evidence: reference fidelity, exploded-view quality/detail, motion integrity (they must do the transit collision math from the code), fact accuracy of all copy, shot quality of every dossier frame, scroll discipline (single state writer, everything f(scroll)). Fix every blocker and re-verify; never inflate scores; report remaining limitations honestly.
-4. **QA matrix:** capture real rendered frames at 0/10/…/100% forward, revisit beats scrolling upward, prove **forward/reverse pixel parity** and bit-identical pose determinism at the same progress; test rapid flings, slow scrolls, arbitrary stops; verify text sync, no clipping, no lighting/camera jumps, budgets met.
+4. **QA matrix:** capture real rendered frames at 0/10/…/100% forward, revisit beats scrolling upward, prove **forward/reverse pixel parity** and bit-identical pose determinism at the same progress; test rapid flings, slow scrolls, arbitrary stops; verify text sync, no clipping, no lighting/camera jumps, budgets met. Repeat the key beats across the responsive device matrix.
+5. **Deterministic QA hooks:** expose dev-only drivers that set any timeline state directly and force a single render (`__setStory` / `__setTour` / `__frame`) — hidden/throttled tabs suspend rAF and silently fake scroll-driven captures, so never trust a screenshot you can't force-frame.
 
 ## 8. Ship & live-verify
 
