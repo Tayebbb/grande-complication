@@ -151,12 +151,12 @@ export function createDialTextures(size = 2048): DialTextures {
     ctx.restore();
   }
 
-  // -- brand text (det-16) --
+  // -- brand text (det-16) — neutral marque (no real trademark on the public deploy) --
   ctx.fillStyle = '#EFEDE6';
   ctx.font = `${Math.round(size * 0.026)}px Georgia, "Times New Roman", serif`;
-  ctx.fillText('PATEK PHILIPPE', 0, -R * 0.30);
+  ctx.fillText('CHRONOGRAPHE', 0, -R * 0.30);
   ctx.font = `${Math.round(size * 0.02)}px Georgia, "Times New Roman", serif`;
-  ctx.fillText('GENEVE', 0, -R * 0.255);
+  ctx.fillText('GENÈVE', 0, -R * 0.255);
   ctx.restore();
 
   // -- roughness canvas: print & tachy band glossier (darker = smoother) --

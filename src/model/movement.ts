@@ -389,7 +389,7 @@ export function buildMovement(mats: {
   balance.position.set(-0.7, -0.62, -0.12);
   group.add(balance);
 
-  const rotorGeos: THREE.BufferGeometry[] = [new THREE.TorusGeometry(0.3, 0.035, 12, 48)];
+  const rotorGeos: THREE.BufferGeometry[] = [new THREE.TorusGeometry(0.3, 0.035, 20, 96)];
   for (let i = 0; i < 3; i++) {
     const spoke = new THREE.BoxGeometry(0.56, 0.03, 0.024);
     spoke.rotateZ((i * TAU) / 3);

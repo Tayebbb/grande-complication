@@ -17,7 +17,7 @@ import {
   setExplosionProgress,
   type ProceduralModelRuntime,
 } from './createObjectModel';
-import { STORY, CAMERA_KEYS, explosionFromStory, rigPoseFromStory, RIG, type StoryStage } from './story';
+import { STORY, CAMERA_KEYS, DOSSIER, DOSSIER_KEYS, explosionFromStory, rigPoseFromStory, RIG, type StoryStage, type CameraKey } from './story';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -172,7 +172,8 @@ const runtime = watch.userData.sculptRuntime as ProceduralModelRuntime;
 
 const state = {
   story: 0,      // master progress across the pinned sequence
-  reassembly: 0, // outro progress (1 = fully reassembled hero)
+  tour: 0,       // component-dossier progress (second pinned act)
+  reassembly: 0, // retained for the QA driver signature
   heroIn: 0,     // intro fade-in 0..1
   mouseX: 0,
   mouseY: 0,
@@ -182,30 +183,38 @@ const state = {
 
 const tmpTarget = new THREE.Vector3();
 const tmpPos = new THREE.Vector3();
+const blendPos = new THREE.Vector3();
+const blendTarget = new THREE.Vector3();
 
 /* C1-continuous camera path: cubic Hermite with Catmull-Rom tangents over
    non-uniform knots — removes the per-segment ease pumping (velocity no
    longer hits zero at every keyframe). */
-const KNOTS = CAMERA_KEYS.map((k) => k.p);
-const CHANNELS: number[][] = [
-  CAMERA_KEYS.map((k) => k.az),
-  CAMERA_KEYS.map((k) => k.el),
-  CAMERA_KEYS.map((k) => k.dist),
-  CAMERA_KEYS.map((k) => k.target[0]),
-  CAMERA_KEYS.map((k) => k.target[1]),
-  CAMERA_KEYS.map((k) => k.target[2]),
-];
+function buildChannels(keys: CameraKey[]) {
+  return {
+    knots: keys.map((k) => k.p),
+    channels: [
+      keys.map((k) => k.az),
+      keys.map((k) => k.el),
+      keys.map((k) => k.dist),
+      keys.map((k) => k.target[0]),
+      keys.map((k) => k.target[1]),
+      keys.map((k) => k.target[2]),
+    ] as number[][],
+  };
+}
+const STORY_CAM = buildChannels(CAMERA_KEYS);
+const DOSSIER_CAM = buildChannels(DOSSIER_KEYS);
 
-function hermiteChannel(values: number[], i: number, t: number): number {
+function hermiteChannel(knots: number[], values: number[], i: number, t: number): number {
   const n = values.length;
-  const t0 = KNOTS[i];
-  const t1 = KNOTS[i + 1];
+  const t0 = knots[i];
+  const t1 = knots[i + 1];
   const h = t1 - t0;
   const v0 = values[i];
   const v1 = values[i + 1];
   const d = (v1 - v0) / h; // segment slope
-  const dPrev = i > 0 ? (v0 - values[i - 1]) / (t0 - KNOTS[i - 1]) : d;
-  const dNext = i < n - 2 ? (values[i + 2] - v1) / (KNOTS[i + 2] - t1) : d;
+  const dPrev = i > 0 ? (v0 - values[i - 1]) / (t0 - knots[i - 1]) : d;
+  const dNext = i < n - 2 ? (values[i + 2] - v1) / (knots[i + 2] - t1) : d;
   // Fritsch–Carlson monotone limiter: keeps C1 continuity, prevents overshoot
   const limit = (a: number, b: number) => (a * b <= 0 ? 0 : (2 * a * b) / (a + b));
   const m0 = limit(dPrev, d);
@@ -221,17 +230,22 @@ function hermiteChannel(values: number[], i: number, t: number): number {
   );
 }
 
-function cameraAt(p: number, outPos: THREE.Vector3, outTarget: THREE.Vector3) {
+function cameraAt(
+  cam: { knots: number[]; channels: number[][] },
+  p: number,
+  outPos: THREE.Vector3,
+  outTarget: THREE.Vector3,
+) {
   const clamped = THREE.MathUtils.clamp(p, 0, 1);
   let i = 0;
-  while (i < KNOTS.length - 2 && clamped > KNOTS[i + 1]) i++;
-  const az = THREE.MathUtils.degToRad(hermiteChannel(CHANNELS[0], i, clamped));
-  const el = THREE.MathUtils.degToRad(hermiteChannel(CHANNELS[1], i, clamped));
-  const dist = hermiteChannel(CHANNELS[2], i, clamped);
+  while (i < cam.knots.length - 2 && clamped > cam.knots[i + 1]) i++;
+  const az = THREE.MathUtils.degToRad(hermiteChannel(cam.knots, cam.channels[0], i, clamped));
+  const el = THREE.MathUtils.degToRad(hermiteChannel(cam.knots, cam.channels[1], i, clamped));
+  const dist = hermiteChannel(cam.knots, cam.channels[2], i, clamped);
   outTarget.set(
-    hermiteChannel(CHANNELS[3], i, clamped),
-    hermiteChannel(CHANNELS[4], i, clamped),
-    hermiteChannel(CHANNELS[5], i, clamped),
+    hermiteChannel(cam.knots, cam.channels[3], i, clamped),
+    hermiteChannel(cam.knots, cam.channels[4], i, clamped),
+    hermiteChannel(cam.knots, cam.channels[5], i, clamped),
   );
   outPos.set(
     outTarget.x + Math.sin(az) * Math.cos(el) * dist,
@@ -290,8 +304,20 @@ function applyState() {
   hemi.intensity = 0.22 * (0.25 + 0.75 * inspect);
   scene.environmentIntensity = 0.38 + 0.62 * inspect;
 
-  // camera along keyframes
-  cameraAt(p, tmpPos, tmpTarget);
+  // camera: the dossier tour takes over past the story's end. Blend over the
+  // first 3% of the tour — identical keys make it invisible on slow scrolls,
+  // and it absorbs the story-scrub lag on fast upward flings (no azimuth pop).
+  if (state.tour > 0) {
+    cameraAt(DOSSIER_CAM, state.tour, tmpPos, tmpTarget);
+    if (state.tour < 0.03 && p < 0.9999) {
+      cameraAt(STORY_CAM, p, blendPos, blendTarget);
+      const bt = state.tour / 0.03;
+      tmpPos.lerpVectors(blendPos, tmpPos, bt);
+      tmpTarget.lerpVectors(blendTarget, tmpTarget, bt);
+    }
+  } else {
+    cameraAt(STORY_CAM, p, tmpPos, tmpTarget);
+  }
 
   // subtle mouse parallax (desktop, motion allowed)
   if (!reducedMotion && !isTouch) {
@@ -300,6 +326,7 @@ function applyState() {
   }
   camera.position.copy(tmpPos);
   camera.lookAt(tmpTarget);
+  updateDossier(state.tour); // after the camera writes, so the ring projects lag-free
 
   // key light drifts slightly with the story so metal highlights travel
   key.position.x = -5.5 + Math.sin(p * Math.PI) * 2.2;
@@ -414,6 +441,58 @@ function refreshLabels(stageDef: StoryStage) {
 
 const projV = new THREE.Vector3();
 
+/* ------------------------------------------------------------------ */
+/* Component dossier — material tour panel + target ring               */
+/* ------------------------------------------------------------------ */
+
+const dossierPanel = document.getElementById('dossier-panel')!;
+const dossierRing = document.getElementById('dossier-ring')!;
+let dossierIdx = -1;
+const ringAnchor = new THREE.Vector3();
+
+function renderDossierStop(i: number) {
+  const s = DOSSIER[i];
+  dossierPanel.innerHTML = `
+    <p class="d-index">${s.index} / ${String(DOSSIER.length).padStart(2, '0')} — COMPONENT DOSSIER</p>
+    <span class="d-material" style="color:${s.accent}">${s.material}</span>
+    <h3>${s.name}</h3>
+    <p class="d-body">${s.body}</p>
+    <dl class="d-specs">${s.specs.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`;
+  dossierPanel.style.borderLeftColor = s.accent;
+  dossierRing.style.borderColor = s.accent;
+}
+
+function updateDossier(q: number) {
+  const n = DOSSIER.length;
+  const raw = Math.round(q * (n + 1) - 0.72);
+  const idx = q > 0.001 && raw >= 0 && raw < n ? raw : -1;
+  if (idx !== dossierIdx) {
+    dossierIdx = idx;
+    if (idx >= 0) {
+      renderDossierStop(idx);
+      if (reducedMotion) {
+        gsap.set(dossierPanel, { opacity: 1, y: 0 });
+      } else {
+        gsap.killTweensOf(dossierPanel);
+        gsap.fromTo(dossierPanel, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' });
+      }
+    } else {
+      gsap.killTweensOf(dossierPanel);
+      gsap.to(dossierPanel, { opacity: 0, duration: reducedMotion ? 0 : 0.25 });
+    }
+  }
+  // target ring tracks the featured component
+  if (idx >= 0) {
+    ringAnchor.set(...DOSSIER[idx].anchor).project(camera);
+    const behind = ringAnchor.z > 1;
+    dossierRing.style.left = `${((ringAnchor.x * 0.5 + 0.5) * 100).toFixed(2)}%`;
+    dossierRing.style.top = `${((-ringAnchor.y * 0.5 + 0.5) * 100).toFixed(2)}%`;
+    dossierRing.style.opacity = behind ? '0' : '0.9';
+  } else {
+    dossierRing.style.opacity = '0';
+  }
+}
+
 function updateLabels(k = 0.12) {
   for (const l of liveLabels) {
     const exp = l.node.userData.explode as { distance: number } | undefined;
@@ -477,6 +556,18 @@ const ctx = gsap.context(() => {
 
   // the journey is inherently reversible: scrolling up scrubs the same timeline
   // backward (reassembly → retreat → landing). No separate reassembly animation.
+
+  // component dossier — the post-exploded material tour, its own pinned scrub
+  ScrollTrigger.create({
+    trigger: '#dossier',
+    start: 'top top',
+    end: '+=8200',
+    pin: true,
+    scrub: reducedMotion ? true : 1,
+    onUpdate(self) {
+      state.tour = self.progress;
+    },
+  });
 
   gsap.to('.outro-copy', {
     opacity: 1,
