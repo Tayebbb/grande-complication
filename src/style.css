@@ -80,11 +80,11 @@ body {
 
 /* ---------- scroll structure ---------- */
 main { position: relative; z-index: 1; }
-.hero { height: 100vh; }
-#story { height: 100vh; position: relative; }
+.hero { height: 100vh; height: 100dvh; }
+#story { height: 100vh; height: 100dvh; position: relative; }
 
 /* ---------- component dossier (post-exploded material tour) ---------- */
-#dossier { height: 100vh; position: relative; }
+#dossier { height: 100vh; height: 100dvh; position: relative; }
 
 .dossier-panel {
   position: absolute; right: 6vw; top: 50%; transform: translateY(-50%);

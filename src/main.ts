@@ -20,6 +20,8 @@ import {
 import { STORY, CAMERA_KEYS, DOSSIER, DOSSIER_KEYS, explosionFromStory, reassemblyFromTour, rigPoseFromStory, RIG, type StoryStage, type CameraKey } from './story';
 
 gsap.registerPlugin(ScrollTrigger);
+// phone URL-bar show/hide fires resize storms mid-scroll — don't rebuild pins for them
+ScrollTrigger.config({ ignoreMobileResize: true });
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
@@ -49,15 +51,33 @@ scene.environment = createPerpetualCalendarChronographEnvironment(renderer);
 
 const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.1, 80);
 
-// portrait compensation: vertical FOV crops hard on phones — widen by pulling
-// the whole camera path back so the full product stays framed on any aspect
-const REF_ASPECT = 1.5;
+// responsive projection: guarantee narrow viewports see (most of) the desktop's
+// horizontal span at every beat. Vertical FOV widens (capped at 56° to avoid
+// distortion); anything beyond the cap pulls the camera back.
+const REF_WIDTH = 1.25; // fraction of a 1.5-aspect desktop's width to preserve
+const BASE_FOV = 32;
+const FOV_CAP = 56;
 let distScale = 1;
-function updateDistScale() {
+function updateProjection() {
   const aspect = window.innerWidth / window.innerHeight;
-  distScale = aspect >= REF_ASPECT ? 1 : Math.pow(Math.min(REF_ASPECT / aspect, 2.8), 0.62);
+  camera.aspect = aspect;
+  if (aspect >= REF_WIDTH) {
+    camera.fov = BASE_FOV;
+    distScale = 1;
+  } else {
+    const halfH = Math.tan(THREE.MathUtils.degToRad(BASE_FOV / 2)) * (REF_WIDTH / aspect);
+    const wanted = 2 * THREE.MathUtils.radToDeg(Math.atan(halfH));
+    if (wanted <= FOV_CAP) {
+      camera.fov = wanted;
+      distScale = 1;
+    } else {
+      camera.fov = FOV_CAP;
+      distScale = halfH / Math.tan(THREE.MathUtils.degToRad(FOV_CAP / 2));
+    }
+  }
+  camera.updateProjectionMatrix();
 }
-updateDistScale();
+updateProjection();
 
 /* ---- premium dark-studio lighting (lighting-pass rig) ---- */
 // The studio rig is dimmed while the watch rests under the spotlight and
@@ -727,10 +747,9 @@ window.addEventListener('pointermove', (e) => {
 });
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  updateProjection();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  updateDistScale();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
 });
 
 const clock = new THREE.Clock();
