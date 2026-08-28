@@ -1,8 +1,10 @@
 /**
  * Grande Complication — cinematic scroll experience.
  * ONE master story progress (GSAP ScrollTrigger scrub on the pinned section)
- * drives camera, watch rotation, explosion, text, labels, chapter UI and progress
- * bar. The outro drives a single reassembly value. No competing timelines.
+ * drives the physical journey (table → lift → approach → exploded view),
+ * camera, lighting, text, labels, chapter UI and progress bar. Scrolling up
+ * scrubs the same timeline backward — the reverse is inherent, not a second
+ * animation. No competing timelines.
  */
 import * as THREE from 'three';
 import gsap from 'gsap';
@@ -15,7 +17,7 @@ import {
   setExplosionProgress,
   type ProceduralModelRuntime,
 } from './createObjectModel';
-import { STORY, CAMERA_KEYS, explosionFromStory, type StoryStage } from './story';
+import { STORY, CAMERA_KEYS, explosionFromStory, rigPoseFromStory, RIG, type StoryStage } from './story';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -48,7 +50,8 @@ scene.environment = createPerpetualCalendarChronographEnvironment(renderer);
 const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.1, 80);
 
 /* ---- premium dark-studio lighting (lighting-pass rig) ---- */
-// large soft key, upper-left-front — reveals case curvature and dial gradient
+// The studio rig is dimmed while the watch rests under the spotlight and
+// ramps to its verified full state as the exploded inspection begins.
 const key = new THREE.DirectionalLight(0xfff2e2, 2.0);
 key.position.set(-5.5, 7, 7.5);
 key.castShadow = true;
@@ -68,6 +71,18 @@ rim.position.set(3.5, 4.0, -7.0);
 scene.add(rim);
 const hemi = new THREE.HemisphereLight(0xdfe6f0, 0x17151a, 0.22);
 scene.add(hemi);
+
+// one physical spotlight — the only strong source while the watch is on the table
+const spot = new THREE.SpotLight(0xfff0dc, 340, 0, 0.37, 0.85, 1.7);
+spot.position.set(1.9, 6.8, 3.1);
+spot.castShadow = true;
+spot.shadow.mapSize.set(1024, 1024);
+spot.shadow.bias = -0.0004;
+spot.shadow.normalBias = 0.02;
+spot.shadow.camera.near = 2;
+spot.shadow.camera.far = 20;
+scene.add(spot);
+scene.add(spot.target);
 
 /* ---- backdrop: restrained radial falloff + faint atmosphere ---- */
 function makeBackdrop(): THREE.Mesh {
@@ -99,6 +114,49 @@ function makeBackdrop(): THREE.Mesh {
 }
 scene.add(makeBackdrop());
 
+/* ---- the table: a dark physical surface that dissolves into the room ---- */
+function makeRadialTexture(stops: Array<[number, string]>): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d')!;
+  const g = ctx.createRadialGradient(256, 256, 10, 256, 256, 256);
+  for (const [o, col] of stops) g.addColorStop(o, col);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 512);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+const tableMat = new THREE.MeshStandardMaterial({
+  color: 0x131418,
+  roughness: 0.34,
+  metalness: 0.0,
+  envMapIntensity: 0.05,
+  transparent: true,
+  alphaMap: makeRadialTexture([[0, '#ffffff'], [0.4, '#a8a8a8'], [1, '#000000']]),
+});
+const table = new THREE.Mesh(new THREE.CircleGeometry(15, 48), tableMat);
+table.rotation.x = -Math.PI / 2;
+table.position.y = RIG.tableY;
+table.receiveShadow = true;
+scene.add(table);
+
+// soft AO-style contact disc under the watch (real spot shadow sits on top of it)
+const contactMat = new THREE.MeshBasicMaterial({
+  map: makeRadialTexture([[0, 'rgba(0,0,0,0.9)'], [0.55, 'rgba(0,0,0,0.5)'], [1, 'rgba(0,0,0,0)']]),
+  transparent: true,
+  depthWrite: false,
+  color: 0x000000,
+});
+contactMat.map!.premultiplyAlpha = false;
+const contact = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), contactMat);
+contact.rotation.x = -Math.PI / 2;
+contact.position.y = RIG.tableY + 0.01;
+contact.scale.set(7.6, 4.6, 1);
+contact.renderOrder = -5;
+scene.add(contact);
+
 /* ---- model ---- */
 const watch = createPerpetualCalendarChronographModel({ fidelity: 'full' });
 const watchRig = new THREE.Group();
@@ -124,8 +182,6 @@ const state = {
 
 const tmpTarget = new THREE.Vector3();
 const tmpPos = new THREE.Vector3();
-const heroPosTmp = new THREE.Vector3();
-const heroTargetTmp = new THREE.Vector3();
 
 /* C1-continuous camera path: cubic Hermite with Catmull-Rom tangents over
    non-uniform knots — removes the per-segment ease pumping (velocity no
@@ -184,32 +240,58 @@ function cameraAt(p: number, outPos: THREE.Vector3, outTarget: THREE.Vector3) {
   );
 }
 
-let clockTime = 0;
-let spinActive = false;
-let spinTime = 0; // integrates only while the calibre is revealed — no pose snap on scrub-back
+// single geodesic pivot: lying flat (dial up, straps screen-x) → facing the viewer
+const REST_QUAT = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, Math.PI / 2));
+const UPRIGHT_QUAT = new THREE.Quaternion();
 
 function applyState() {
   const p = state.story;
-  // reassembly rewinds the explosion and returns the camera to the hero framing
-  const r = state.reassembly;
-  const rEase = r * r * (3 - 2 * r);
 
   // hero entrance fade
   stage.style.opacity = state.heroIn.toFixed(3);
 
   // explosion — one master value (spec runtimeExplosion staggering inside)
-  const explodeT = explosionFromStory(p) * (1 - rEase);
+  const explodeT = explosionFromStory(p);
   setExplosionProgress(watch, explodeT);
-  spinActive = explodeT > 0.55;
+  // mechanism pose is a pure function of progress — scrub-locked, inherently reversible
+  if (!reducedMotion) spinFn()?.(explodeT * 9);
 
-  // camera along keyframes; reassembly returns toward the hero key
+  // physical rig: table → lift → tilt-to-viewer → approach (all pure f(p))
+  const pose = rigPoseFromStory(p);
+  watchRig.position.set(0, pose.y, pose.z);
+  watchRig.quaternion.slerpQuaternions(REST_QUAT, UPRIGHT_QUAT, pose.tilt);
+  // slow purposeful yaw inside the inspection chapters (after the tilt has completed)
+  const yaw =
+    THREE.MathUtils.degToRad(-6) * chapterWindow(p, 0.44, 0.6) +
+    THREE.MathUtils.degToRad(4) * chapterWindow(p, 0.6, 0.7) +
+    THREE.MathUtils.degToRad(-3) * chapterWindow(p, 0.7, 0.78);
+  watch.rotation.y = yaw;
+
+  // table interaction: contact shadow softens, spreads and dies as the watch rises;
+  // the table itself dissolves as the watch travels toward the viewer
+  const lift = pose.lift;
+  contactMat.opacity = Math.pow(1 - lift, 1.6) * (1 - pose.approach);
+  const spread = 1 + lift * 0.55;
+  contact.scale.set(7.6 * spread, 4.6 * spread, 1);
+  tableMat.opacity = 1 - pose.approach;
+  table.visible = tableMat.opacity > 0.01;
+  contact.visible = contactMat.opacity > 0.01;
+
+  // spotlight physically tracks the watch; the studio rig fades in for inspection
+  spot.target.position.set(0, pose.y * 0.9, pose.z * 0.9);
+  spot.target.updateMatrixWorld();
+  spot.position.set(1.9, 6.8 + pose.y * 0.35, 3.1 + pose.z * 0.55);
+  const inspect = smooth01((p - 0.34) / 0.16); // studio ramp as disassembly begins
+  spot.angle = 0.37 + inspect * 0.22;
+  spot.intensity = 340 * (1 - inspect * 0.45);
+  key.intensity = 2.0 * (0.2 + 0.8 * inspect);
+  rim.intensity = 0.9 * (0.15 + 0.85 * inspect);
+  fill.intensity = 0.24 * (0.2 + 0.8 * inspect);
+  hemi.intensity = 0.22 * (0.25 + 0.75 * inspect);
+  scene.environmentIntensity = 0.38 + 0.62 * inspect;
+
+  // camera along keyframes
   cameraAt(p, tmpPos, tmpTarget);
-  if (r > 0) {
-    cameraAt(0, heroPosTmp, heroTargetTmp);
-    heroPosTmp.z += 0.6; // slightly wider final hero
-    tmpPos.lerp(heroPosTmp, rEase);
-    tmpTarget.lerp(heroTargetTmp, rEase);
-  }
 
   // subtle mouse parallax (desktop, motion allowed)
   if (!reducedMotion && !isTouch) {
@@ -219,21 +301,14 @@ function applyState() {
   camera.position.copy(tmpPos);
   camera.lookAt(tmpTarget);
 
-  // watch: subtle idle float in the hero, decaying as the story advances
-  const float = 1 - THREE.MathUtils.clamp(p * 6, 0, 1);
-  const drift = reducedMotion ? 0 : 1;
-  watchRig.position.y = Math.sin(clockTime * 0.8) * 0.045 * float * drift;
-  watchRig.rotation.z = Math.sin(clockTime * 0.5) * 0.008 * float * drift;
-  // slow purposeful yaw that peaks at the control chapter (reveals flank), settles after
-  const yaw =
-    THREE.MathUtils.degToRad(-6) * chapterWindow(p, 0.15, 0.3) +
-    THREE.MathUtils.degToRad(4) * chapterWindow(p, 0.3, 0.5) +
-    THREE.MathUtils.degToRad(-3) * chapterWindow(p, 0.5, 0.65);
-  watchRig.rotation.y = yaw * (1 - rEase);
-
   // key light drifts slightly with the story so metal highlights travel
   key.position.x = -5.5 + Math.sin(p * Math.PI) * 2.2;
   key.position.y = 7 - p * 1.5;
+}
+
+function smooth01(t: number): number {
+  const c = THREE.MathUtils.clamp(t, 0, 1);
+  return c * c * (3 - 2 * c);
 }
 
 function chapterWindow(p: number, a: number, b: number): number {
@@ -339,7 +414,7 @@ function refreshLabels(stageDef: StoryStage) {
 
 const projV = new THREE.Vector3();
 
-function updateLabels() {
+function updateLabels(k = 0.12) {
   for (const l of liveLabels) {
     const exp = l.node.userData.explode as { distance: number } | undefined;
     const home = l.node.userData.assembledPosition as THREE.Vector3 | undefined;
@@ -355,7 +430,7 @@ function updateLabels() {
     l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%,-50%)`;
     const target = behind || sep === 0 ? 0 : 1;
     const cur = Number(l.el.style.opacity || 0);
-    l.el.style.opacity = String(cur + (target - cur) * 0.12);
+    l.el.style.opacity = String(cur + (target - cur) * k);
   }
 }
 
@@ -370,10 +445,12 @@ let hintHidden = false;
 
 // buttery input: Lenis smooths the raw wheel/touch delta, ScrollTrigger scrubs on top
 let lenis: Lenis | null = null;
+let lenisTick: ((time: number) => void) | null = null;
 if (!reducedMotion) {
   lenis = new Lenis({ duration: 1.15, smoothWheel: true, touchMultiplier: 1.35 });
   lenis.on('scroll', ScrollTrigger.update);
-  gsap.ticker.add((time) => lenis?.raf(time * 1000));
+  lenisTick = (time: number) => lenis?.raf(time * 1000);
+  gsap.ticker.add(lenisTick);
   gsap.ticker.lagSmoothing(0);
 }
 
@@ -382,7 +459,7 @@ const ctx = gsap.context(() => {
   ScrollTrigger.create({
     trigger: '#story',
     start: 'top top',
-    end: '+=7200',
+    end: '+=8600',
     pin: true,
     scrub: reducedMotion ? true : 0.5,
     onUpdate(self) {
@@ -398,16 +475,8 @@ const ctx = gsap.context(() => {
     },
   });
 
-  // outro reassembly
-  ScrollTrigger.create({
-    trigger: '.outro',
-    start: 'top bottom',
-    end: 'center center',
-    scrub: reducedMotion ? true : 0.5,
-    onUpdate(self) {
-      state.reassembly = self.progress;
-    },
-  });
+  // the journey is inherently reversible: scrolling up scrubs the same timeline
+  // backward (reassembly → retreat → landing). No separate reassembly animation.
 
   gsap.to('.outro-copy', {
     opacity: 1,
@@ -475,7 +544,6 @@ let rafId = 0;
 const spinFn = () => watch.userData.spinMechanism as ((t: number) => void) | undefined;
 function tick() {
   const dt = clock.getDelta();
-  clockTime += dt;
   fpsAccum += dt;
   fpsFrames += 1;
   if (fpsAccum >= 1) {
@@ -483,15 +551,12 @@ function tick() {
     fpsAccum = 0;
     fpsFrames = 0;
   }
-  // smooth the parallax input
-  state.smX += (state.mouseX - state.smX) * 0.06;
-  state.smY += (state.mouseY - state.smY) * 0.06;
+  // smooth the parallax input (frame-rate independent)
+  const kParallax = 1 - Math.pow(1 - 0.06, dt * 60);
+  state.smX += (state.mouseX - state.smX) * kParallax;
+  state.smY += (state.mouseY - state.smY) * kParallax;
   applyState();
-  if (spinActive && !reducedMotion) {
-    spinTime += dt;
-    spinFn()?.(spinTime);
-  }
-  updateLabels();
+  updateLabels(1 - Math.pow(1 - 0.12, dt * 60));
   renderer.render(scene, camera);
   frames += 1;
   if (frames === 10) window.__expReady = true;
@@ -505,7 +570,9 @@ function teardown() {
   cancelAnimationFrame(rafId);
   ctx.revert();
   ScrollTrigger.killAll();
+  if (lenisTick) gsap.ticker.remove(lenisTick);
   lenis?.destroy();
+  lenis = null;
   disposePerpetualCalendarChronographModel(watch);
   scene.environment?.dispose();
   renderer.dispose();

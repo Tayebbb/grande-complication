@@ -24,18 +24,18 @@ export interface StoryStage {
 
 export const STORY: StoryStage[] = [
   {
-    start: 0.0, end: 0.15,
+    start: 0.0, end: 0.05,
     eyebrow: 'PRECISION / 01',
-    title: 'TIME, REFINED.',
-    description: 'A study in proportion, precision and mechanical detail.',
+    title: 'TIME, AT REST.',
+    description: 'A mechanical instrument, motionless under a single light.',
     focus: 'watch',
     labels: [],
   },
   {
-    start: 0.15, end: 0.3,
+    start: 0.05, end: 0.48,
     eyebrow: 'CASE / 02',
     title: 'BUILT IN LAYERS.',
-    description: 'Every surface is shaped to control light, depth and proportion.',
+    description: 'It rises to meet you. Every surface is shaped to control light and depth.',
     focus: 'case',
     labels: [
       { component: 'crystal', text: 'CRYSTAL', sub: 'DOMED SAPPHIRE', offset: [0.9, 0.9, 0.4], minSeparation: 0.12 },
@@ -44,7 +44,7 @@ export const STORY: StoryStage[] = [
     ],
   },
   {
-    start: 0.3, end: 0.5,
+    start: 0.48, end: 0.6,
     eyebrow: 'DIAL / 03',
     title: 'EVERY DETAIL HAS A PLACE.',
     description: 'Concentric scales, subdials and markers compose a precise visual hierarchy.',
@@ -57,7 +57,7 @@ export const STORY: StoryStage[] = [
     ],
   },
   {
-    start: 0.5, end: 0.65,
+    start: 0.6, end: 0.7,
     eyebrow: 'INDICATION / 04',
     title: 'PRECISION IN MOTION.',
     description: 'Each hand is independently constructed around a precise central axis.',
@@ -69,7 +69,7 @@ export const STORY: StoryStage[] = [
     ],
   },
   {
-    start: 0.65, end: 0.78,
+    start: 0.7, end: 0.78,
     eyebrow: 'CONTROL / 05',
     title: 'EVERY MOVEMENT HAS PURPOSE.',
     description: 'Controls are positioned around the case with mechanical intent.',
@@ -119,18 +119,57 @@ export interface CameraKey {
 }
 
 export const CAMERA_KEYS: CameraKey[] = [
-  { p: 0.0, az: 0, el: 5, dist: 12.4, target: [0, -0.1, 0.2] },
-  { p: 0.15, az: -5, el: 5, dist: 11.0, target: [0, 0, 0.3] },
-  { p: 0.3, az: -11, el: 11, dist: 9.8, target: [0, 0.15, 0.5] },
-  { p: 0.5, az: -2, el: 3, dist: 9.6, target: [0, 0.1, 0.8] },
-  { p: 0.65, az: 38, el: 7, dist: 10.2, target: [0.6, 0, 0.6] },
-  { p: 0.78, az: 21, el: 12, dist: 13.6, target: [0.3, -0.3, 0.7] },
-  { p: 0.92, az: 38, el: 13, dist: 22.0, target: [0.5, -0.55, -0.2] },
-  { p: 1.0, az: 55, el: 14, dist: 26.0, target: [0.55, -0.55, -0.5] },
+  { p: 0.0, az: 14, el: 30, dist: 11.5, target: [0, -2.0, 0.1] },
+  { p: 0.02, az: 14, el: 30, dist: 11.5, target: [0, -2.0, 0.1] }, // dead-stop landing on reverse
+  { p: 0.1, az: 10, el: 24, dist: 11.6, target: [0, -1.7, 0.2] },
+  { p: 0.24, az: -2, el: 15, dist: 10.8, target: [0, -0.2, 1.0] },
+  { p: 0.36, az: -6, el: 6, dist: 9.9, target: [0, 0.1, 2.0] },
+  { p: 0.4, az: -6, el: 6, dist: 9.9, target: [0, 0.1, 2.0] }, // held beat: watch pauses at inspection distance
+  { p: 0.44, az: -11, el: 8, dist: 10.9, target: [0, 0.15, 2.6] },
+  { p: 0.58, az: -2, el: 3, dist: 11.2, target: [0, 0.1, 3.0] },
+  { p: 0.7, az: 38, el: 7, dist: 11.4, target: [0.6, 0, 2.9] },
+  { p: 0.8, az: 21, el: 12, dist: 14.2, target: [0.3, -0.3, 2.6] },
+  { p: 0.92, az: 38, el: 13, dist: 22.5, target: [0.5, -0.55, 2.1] },
+  { p: 1.0, az: 55, el: 14, dist: 26.5, target: [0.55, -0.55, 1.8] },
 ];
 
-/** Explosion master ramp: assembled until 0.16, fully exploded by 0.96. */
+/** Explosion master ramp: assembled through table/lift/approach, a held beat
+    at the inspection distance, fully exploded by 0.96. */
 export function explosionFromStory(p: number): number {
-  const t = (p - 0.16) / (0.96 - 0.16);
+  const t = (p - 0.4) / (0.96 - 0.4);
   return Math.min(1, Math.max(0, t));
+}
+
+/* ---- physical rig choreography (table → lift → approach), all pure f(p) ---- */
+
+export const RIG = {
+  tableY: -2.92,   // world y of the table surface
+  restLift: 0.66,  // case-back-to-centre offset when lying flat
+  approachZ: 2.8,  // how far the watch travels toward the viewer
+} as const;
+
+const ss = (t: number) => t * t * (3 - 2 * t);
+const phase = (p: number, a: number, b: number) => Math.min(1, Math.max(0, (p - a) / (b - a)));
+
+export interface RigPose {
+  y: number;
+  z: number;
+  tilt: number;  // 0 = lying flat on the table, 1 = facing the viewer (single geodesic pivot)
+  lift: number;  // 0 = on table, 1 = fully lifted (drives shadow + table)
+  approach: number;
+}
+
+/** Deterministic rig pose — scrubbing backward retraces the identical path. */
+export function rigPoseFromStory(p: number): RigPose {
+  const lift = ss(ss(phase(p, 0.05, 0.26)));      // overcomes weight, then eases out
+  const tilt = ss(phase(p, 0.14, 0.32));          // pivots up to face the viewer
+  const approach = ss(phase(p, 0.24, 0.36));      // travels toward the camera, then holds
+  const restY = RIG.tableY + RIG.restLift;
+  return {
+    y: restY + (0 - restY) * lift,
+    z: RIG.approachZ * approach,
+    tilt,
+    lift,
+    approach,
+  };
 }
