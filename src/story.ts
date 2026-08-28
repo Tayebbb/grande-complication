@@ -134,10 +134,14 @@ export const CAMERA_KEYS: CameraKey[] = [
 ];
 
 /** Explosion master ramp: assembled through table/lift/approach, a held beat
-    at the inspection distance, fully exploded by 0.96. */
+    at the inspection distance, fully exploded by 0.96. The tail decelerates to
+    zero slope so entering/leaving the fully exploded state is gentle — scrubbing
+    back from the end un-explodes gradually instead of snapping into reassembly. */
 export function explosionFromStory(p: number): number {
-  const t = (p - 0.4) / (0.96 - 0.4);
-  return Math.min(1, Math.max(0, t));
+  const raw = Math.min(1, Math.max(0, (p - 0.4) / (0.96 - 0.4)));
+  if (raw <= 0.78) return raw;
+  const u = (raw - 0.78) / 0.22;
+  return 0.78 + 0.22 * (1 - Math.pow(1 - u, 1.7));
 }
 
 /* ---- physical rig choreography (table → lift → approach), all pure f(p) ---- */

@@ -447,7 +447,7 @@ let hintHidden = false;
 let lenis: Lenis | null = null;
 let lenisTick: ((time: number) => void) | null = null;
 if (!reducedMotion) {
-  lenis = new Lenis({ duration: 1.15, smoothWheel: true, touchMultiplier: 1.35 });
+  lenis = new Lenis({ duration: 1.35, smoothWheel: true, wheelMultiplier: 0.9, touchMultiplier: 1.35 });
   lenis.on('scroll', ScrollTrigger.update);
   lenisTick = (time: number) => lenis?.raf(time * 1000);
   gsap.ticker.add(lenisTick);
@@ -459,9 +459,9 @@ const ctx = gsap.context(() => {
   ScrollTrigger.create({
     trigger: '#story',
     start: 'top top',
-    end: '+=8600',
+    end: '+=10400',
     pin: true,
-    scrub: reducedMotion ? true : 0.5,
+    scrub: reducedMotion ? true : 1,
     onUpdate(self) {
       state.story = self.progress;
       progressFill.style.transform = `scaleX(${self.progress.toFixed(4)})`;
