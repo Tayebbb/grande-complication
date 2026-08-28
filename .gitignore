@@ -1,0 +1,24 @@
+# dependencies / build
+node_modules/
+dist/
+
+# generated 12MB PNG copy of the reference (original .avif is committed)
+public/reference/reference-watch.png
+
+# bulky intermediate pipeline evidence (durable artifacts below are kept)
+.img2threejs/detail-zones/
+.img2threejs/material-crops/
+.img2threejs/pbr/*/
+.img2threejs/ref-small.png
+.img2threejs/renders/*
+!.img2threejs/renders/*-cmp.png
+!.img2threejs/renders/sheet-a.jpg
+!.img2threejs/renders/sheet-b.jpg
+!.img2threejs/renders/sweep-000.png
+!.img2threejs/renders/sweep-100.png
+!.img2threejs/renders/outro-100.png
+!.img2threejs/renders/surface-dial-grazing.png
+!.img2threejs/renders/surface-strap-grazing.png
+!.img2threejs/renders/*-tier1.json
+!.img2threejs/renders/*-multiangle.json
+!.img2threejs/renders/*-features.json

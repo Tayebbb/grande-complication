@@ -1,0 +1,26 @@
+[
+  {
+    "id": "case-bezel-crystal-profile",
+    "tier": "critical",
+    "score": 0.8,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "Lathe case band w/ convex flank + concave bezel + domed crystal stack present and proportioned; crystal transmission clear. Form-pass will refine bezel step prominence and crystal edge highlight."
+  },
+  {
+    "id": "dial-complication-layout",
+    "tier": "critical",
+    "score": 0.82,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "All complication zones placed per reference: subdials r0.52 at x±0.92, date+moon at 6 (r0.55/0.34), twin apertures ±0.30/y0.86, round windows ±0.78/-0.78, markers r1.38 incl. double-12. Print scales come at material pass."
+  },
+  {
+    "id": "crown-pusher-architecture",
+    "tier": "important",
+    "score": 0.72,
+    "minimumScore": 0.65,
+    "passed": true,
+    "notes": "Crown r0.38 with collar; pushers ±21° (measured), tips reach x≈2.38. Flutes/medallion detail at form pass."
+  }
+]

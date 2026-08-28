@@ -1,0 +1,161 @@
+﻿{
+  "passed": true,
+  "checks": {
+    "silhouetteIoU": 0.8677,
+    "aspectRatioDelta": 0.0105,
+    "scaleDelta": 0.0106,
+    "bilateralSymmetryError": 0.0221,
+    "colorDelta": {
+      "checked": 35,
+      "maxDeltaE": 25.42,
+      "perComponent": [
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 14.44
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 8.98
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 14.44
+        },
+        {
+          "componentId": null,
+          "deltaE": 14.44
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.61
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.61
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 23.15
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 9.44
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 9.44
+        },
+        {
+          "componentId": null,
+          "deltaE": 9.44
+        },
+        {
+          "componentId": null,
+          "deltaE": 8.98
+        },
+        {
+          "componentId": null,
+          "deltaE": 15.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 8.98
+        },
+        {
+          "componentId": null,
+          "deltaE": 8.98
+        },
+        {
+          "componentId": null,
+          "deltaE": 8.98
+        },
+        {
+          "componentId": null,
+          "deltaE": 8.98
+        },
+        {
+          "componentId": null,
+          "deltaE": 25.42
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 10.46
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        },
+        {
+          "componentId": null,
+          "deltaE": 17.21
+        }
+      ],
+      "gated": false
+    }
+  },
+  "failures": [],
+  "maskWarnings": [],
+  "renderHash": "63008366dde8a2ed",
+  "passId": "blockout",
+  "mapStrippedRender": ".img2threejs\\renders\\blockout-front-stripped.png"
+}

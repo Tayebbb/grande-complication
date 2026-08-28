@@ -1,0 +1,18 @@
+[
+  {
+    "id": "overall-silhouette",
+    "tier": "critical",
+    "score": 0.82,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "Massing silhouette matches: case circle D fraction 0.62 of frame, strap column 0.52D, upper strap short (0.72D from center) / lower long (1.17D), crown + 2 pushers on +X flank, lug tabs present. Tier1 IoU 0.868. Lug massing boxes slightly oversized and rotated outward vs reference (hug case corners tighter) - flagged for structural pass."
+  },
+  {
+    "id": "case-bezel-crystal-profile",
+    "tier": "critical",
+    "score": 0.8,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "Blockout-level only: case cylinder + bezel ring + dial disc read as a coherent stack from front and 3/4; profile refinement deferred to form pass by design."
+  }
+]

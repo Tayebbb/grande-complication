@@ -1,0 +1,20 @@
+﻿{
+  "referenceAreaFraction": 0.3787320468763768,
+  "angles": [
+    {
+      "path": ".img2threejs\\renders\\blockout-three-quarter.png",
+      "areaFraction": 0.23079876543209876,
+      "ratio": 0.6093985638015855,
+      "degenerate": false
+    },
+    {
+      "path": ".img2threejs\\renders\\blockout-right-side.png",
+      "areaFraction": 0.06265802469135802,
+      "ratio": 0.16544157065169202,
+      "degenerate": false
+    }
+  ],
+  "degenerate": false,
+  "collapseRatio": 0.15,
+  "note": "deterministic; zero token; a flat-plane-faking-a-volume collapses in silhouette area when orbited"
+}

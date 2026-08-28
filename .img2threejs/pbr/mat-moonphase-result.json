@@ -1,0 +1,85 @@
+﻿{
+  "ok": true,
+  "verdict": "pass",
+  "confidence": 0.86,
+  "estimatedFidelity": 0.86,
+  "targetThreshold": 0.7,
+  "materialId": "mat-moonphase",
+  "sourceImage": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-moonphase.png",
+  "outDir": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase",
+  "palette": [
+    "#1E1A29",
+    "#463B35",
+    "#302725",
+    "#6A5E57",
+    "#1E1717"
+  ],
+  "maps": {
+    "albedo": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_albedo.png",
+      "url": "mat-moonphase_albedo.png",
+      "channel": "albedo",
+      "source": "reference-pixel-extraction"
+    },
+    "roughness": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_roughness.png",
+      "url": "mat-moonphase_roughness.png",
+      "channel": "roughness",
+      "source": "reference-pixel-extraction"
+    },
+    "height": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_height.png",
+      "url": "mat-moonphase_height.png",
+      "channel": "height",
+      "source": "reference-pixel-extraction"
+    },
+    "normal": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_normal.png",
+      "url": "mat-moonphase_normal.png",
+      "channel": "normal",
+      "source": "reference-pixel-extraction"
+    },
+    "ao": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_ao.png",
+      "url": "mat-moonphase_ao.png",
+      "channel": "ao",
+      "source": "reference-pixel-extraction"
+    }
+  },
+  "diagnostics": {
+    "sourceWidth": 326,
+    "sourceHeight": 296,
+    "mapSize": 1024,
+    "cropBBoxPixels": {
+      "x": 0,
+      "y": 0,
+      "width": 326,
+      "height": 296
+    },
+    "mask": {
+      "backgroundColor": "#796D67",
+      "backgroundNoise": 226.903,
+      "transparentPixelFraction": 0.0,
+      "foregroundCoverage": 0.6558
+    },
+    "mapStats": {
+      "valueRange": 0.2893,
+      "heightP90Gradient": 0.09249,
+      "roughnessBase": 0.696,
+      "roughnessVariation": 0.182,
+      "normalStrength": 0.265,
+      "blurRadius": 21
+    },
+    "palette": [
+      "#1E1A29",
+      "#463B35",
+      "#302725",
+      "#6A5E57",
+      "#1E1717"
+    ]
+  },
+  "warnings": [
+    "single-image inverse rendering cannot prove true physical PBR; confidence is capped"
+  ],
+  "limitation": "single-image PBR extraction is an estimate; 70%+ extraction confidence still needs render screenshot review"
+}

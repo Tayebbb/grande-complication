@@ -1,0 +1,978 @@
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+export type ProceduralModelOptions = {
+  wireframe?: boolean;
+  castShadow?: boolean;
+  receiveShadow?: boolean;
+  textureSize?: number;
+  textureAnisotropy?: number;
+  qualityPriority?: 'reference-fidelity' | 'balanced';
+};
+
+export type ProceduralModelRuntime = {
+  nodes: Record<string, THREE.Object3D>;
+  meshes: Record<string, THREE.Mesh>;
+  sockets: Record<string, THREE.Object3D>;
+  colliders: Record<string, unknown>;
+  destructionGroups: Record<string, THREE.Object3D[]>;
+};
+
+type SculptMaterialSpec = Record<string, any>;
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function readLayerNumber(value: unknown, keys: string[], fallback: number): number {
+  if (typeof value === 'number') return value;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of keys) {
+      if (typeof record[key] === 'number') return record[key] as number;
+    }
+  }
+  return fallback;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const normalized = /^#[0-9a-f]{3}$/i.test(hex)
+    ? '#' + hex.slice(1).split('').map((part) => part + part).join('')
+    : hex;
+  const value = /^#[0-9a-f]{6}$/i.test(normalized) ? Number.parseInt(normalized.slice(1), 16) : 0x8a7a5f;
+  return [clampAlbedoChannel((value >> 16) & 255), clampAlbedoChannel((value >> 8) & 255), clampAlbedoChannel(value & 255)];
+}
+
+function materialPalette(spec: SculptMaterialSpec): string[] {
+  const palette = spec.colorVariation?.palette;
+  if (Array.isArray(palette) && palette.length > 0) return palette.filter((value) => typeof value === 'string');
+  const secondary = spec.albedo?.secondary;
+  const colors = [spec.baseColor ?? spec.color ?? spec.albedo?.dominant, ...(Array.isArray(secondary) ? secondary : [])];
+  return colors.filter((value): value is string => typeof value === 'string' && value.startsWith('#'));
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampAlbedoChannel(value: number): number {
+  return Math.max(30, Math.min(240, Math.round(value)));
+}
+
+function clampPbrF0(value: number): number {
+  return Math.max(0.02, Math.min(1, value));
+}
+
+function clampPbrIor(value: number): number {
+  return Math.max(1, Math.min(2.5, value));
+}
+
+function clampPbrMetalness(value: number): number {
+  return value >= 0.5 ? 1 : 0;
+}
+
+function clampedAlbedoColor(spec: SculptMaterialSpec): THREE.Color {
+  const source = typeof spec.baseColor === 'string' ? spec.baseColor : '#8A7A5F';
+  // setStyle with an explicit SRGBColorSpace, NOT the numeric constructor.
+  //
+  // `new THREE.Color(r, g, b)` treats its arguments as LINEAR working-space components,
+  // while an authored `baseColor` hex is sRGB. Feeding one to the other skipped the
+  // transfer function and lifted every dark albedo: #2e2a28, authored as a near-black
+  // vinyl, rendered at roughly sRGB 0.46 — a mid grey. The error is largest exactly where
+  // it matters most, because the transfer curve is steepest near black.
+  return new THREE.Color().setStyle(source, THREE.SRGBColorSpace);
+}
+
+function smoothCurve(value: number): number {
+  return value * value * (3 - 2 * value);
+}
+
+function periodicHash(x: number, y: number, seed: number, periodX: number, periodY: number): number {
+  const wrappedX = ((x % periodX) + periodX) % periodX;
+  const wrappedY = ((y % periodY) + periodY) % periodY;
+  let value = Math.imul(wrappedX + seed * 17, 374761393) ^ Math.imul(wrappedY + seed * 31, 668265263);
+  value = Math.imul(value ^ (value >>> 13), 1274126177);
+  return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
+}
+
+function periodicValueNoise(u: number, v: number, seed: number, periodX: number, periodY: number): number {
+  const x = u * periodX;
+  const y = v * periodY;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const tx = smoothCurve(x - x0);
+  const ty = smoothCurve(y - y0);
+  const a = periodicHash(x0, y0, seed, periodX, periodY);
+  const b = periodicHash(x0 + 1, y0, seed, periodX, periodY);
+  const c = periodicHash(x0, y0 + 1, seed, periodX, periodY);
+  const d = periodicHash(x0 + 1, y0 + 1, seed, periodX, periodY);
+  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, tx), THREE.MathUtils.lerp(c, d, tx), ty);
+}
+
+type SurfaceBand = {
+  frequency: number;
+  amplitude: number;
+  stretchX: number;
+  stretchY: number;
+  ridge: boolean;
+};
+
+function surfaceBands(spec: SculptMaterialSpec): SurfaceBand[] {
+  const source = Array.isArray(spec.surfaceFrequencyBands) ? spec.surfaceFrequencyBands : [];
+  const parsed = source.flatMap((item: unknown) => {
+    if (!item || typeof item !== 'object') return [];
+    const band = item as Record<string, unknown>;
+    const frequency = typeof band.frequency === 'number' ? band.frequency : 0;
+    const amplitude = typeof band.amplitude === 'number' ? band.amplitude : 0;
+    if (frequency <= 0 || amplitude <= 0) return [];
+    const stretch = Array.isArray(band.stretch) ? band.stretch : [1, 1];
+    const description = `${String(band.pattern ?? '')} ${String(band.role ?? '')}`.toLowerCase();
+    return [{
+      frequency,
+      amplitude,
+      stretchX: typeof stretch[0] === 'number' ? Math.max(0.1, stretch[0]) : 1,
+      stretchY: typeof stretch[1] === 'number' ? Math.max(0.1, stretch[1]) : 1,
+      ridge: /(ridge|groove|grain|fiber|striated|crack)/.test(description),
+    }];
+  });
+  return parsed.length > 0 ? parsed : [
+    { frequency: 2, amplitude: 0.42, stretchX: 1, stretchY: 1, ridge: false },
+    { frequency: 12, amplitude: 0.22, stretchX: 1, stretchY: 1, ridge: false },
+    { frequency: 56, amplitude: 0.08, stretchX: 1, stretchY: 1, ridge: false },
+  ];
+}
+
+function sampleSurface(u: number, v: number, bands: SurfaceBand[], seed: number): number {
+  let value = 0;
+  let weight = 0;
+  for (let index = 0; index < bands.length; index += 1) {
+    const band = bands[index];
+    const periodX = Math.max(1, Math.round(band.frequency * band.stretchX));
+    const periodY = Math.max(1, Math.round(band.frequency * band.stretchY));
+    let sample = periodicValueNoise(u, v, seed + index * 1013, periodX, periodY);
+    if (band.ridge) sample = 1 - Math.abs(sample * 2 - 1);
+    value += sample * band.amplitude;
+    weight += band.amplitude;
+  }
+  return weight > 0 ? clamp01(value / weight) : 0.5;
+}
+
+function mixPalette(colors: [number, number, number][], value: number): [number, number, number] {
+  if (colors.length === 1) return colors[0];
+  const scaled = clamp01(value) * (colors.length - 1);
+  const index = Math.min(colors.length - 2, Math.floor(scaled));
+  const mix = scaled - index;
+  const a = colors[index];
+  const b = colors[index + 1];
+  return [
+    Math.round(THREE.MathUtils.lerp(a[0], b[0], mix)),
+    Math.round(THREE.MathUtils.lerp(a[1], b[1], mix)),
+    Math.round(THREE.MathUtils.lerp(a[2], b[2], mix)),
+  ];
+}
+
+type ColorGradientStop = { offset: number; color: string };
+type ColorGradientSpec = {
+  type: 'linear' | 'radial';
+  axis: [number, number];
+  stops: ColorGradientStop[];
+};
+
+function parseRgba(value: string): [number, number, number] {
+  const match = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(value);
+  if (!match) return [138, 122, 95];
+  return [clampAlbedoChannel(Number(match[1])), clampAlbedoChannel(Number(match[2])), clampAlbedoChannel(Number(match[3]))];
+}
+
+// Analytical per-pixel gradient sample. The extraction schema's colorGradient carries
+// exact rgba(...) stop colors (see extract_part_color_recipe.py), so this samples the
+// same trend directly in JS math rather than round-tripping through a Canvas 2D
+// createLinearGradient/createRadialGradient object — same visual result, and it composes
+// directly with the existing noise/height-correlated colorVariation blend below.
+function sampleColorGradient(gradient: ColorGradientSpec, u: number, v: number): [number, number, number] {
+  const stops = gradient.stops.length >= 2 ? gradient.stops : [{ offset: 0, color: 'rgba(138,122,95,1)' }, { offset: 1, color: 'rgba(138,122,95,1)' }];
+  let t: number;
+  if (gradient.type === 'radial') {
+    const [cx, cy] = gradient.axis;
+    const dx = u - cx;
+    const dy = v - cy;
+    const maxRadius = Math.max(0.001, Math.hypot(Math.max(cx, 1 - cx), Math.max(cy, 1 - cy)));
+    t = clamp01(Math.hypot(dx, dy) / maxRadius);
+  } else {
+    const [ax, ay] = gradient.axis;
+    const projection = (u - 0.5) * ax + (v - 0.5) * ay;
+    const maxProjection = 0.5 * (Math.abs(ax) + Math.abs(ay)) || 0.5;
+    t = clamp01(projection / maxProjection + 0.5);
+  }
+  const scaled = t * (stops.length - 1);
+  const index = Math.min(stops.length - 2, Math.max(0, Math.floor(scaled)));
+  const mix = scaled - index;
+  const a = parseRgba(stops[index].color);
+  const b = parseRgba(stops[index + 1].color);
+  return [
+    THREE.MathUtils.lerp(a[0], b[0], mix),
+    THREE.MathUtils.lerp(a[1], b[1], mix),
+    THREE.MathUtils.lerp(a[2], b[2], mix),
+  ];
+}
+
+function writePixel(data: Uint8ClampedArray, offset: number, red: number, green: number, blue: number): void {
+  data[offset] = Math.max(0, Math.min(255, Math.round(red)));
+  data[offset + 1] = Math.max(0, Math.min(255, Math.round(green)));
+  data[offset + 2] = Math.max(0, Math.min(255, Math.round(blue)));
+  data[offset + 3] = 255;
+}
+
+function makeCanvas(size: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  return canvas;
+}
+
+function createMapTexture(
+  canvas: HTMLCanvasElement,
+  colorSpace: THREE.ColorSpace,
+  spec: SculptMaterialSpec,
+  options: ProceduralModelOptions,
+): THREE.CanvasTexture {
+  const texture = new THREE.CanvasTexture(canvas);
+  const projection = spec.textureProjection && typeof spec.textureProjection === 'object' ? spec.textureProjection : {};
+  const repeat = Array.isArray(projection.repeat) ? projection.repeat : [2, 2];
+  texture.colorSpace = colorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(
+    typeof repeat[0] === 'number' ? repeat[0] : 2,
+    typeof repeat[1] === 'number' ? repeat[1] : 2,
+  );
+  texture.anisotropy = Math.max(1, Math.round(options.textureAnisotropy ?? projection.anisotropy ?? 8));
+  texture.needsUpdate = true;
+  return texture;
+}
+
+type ProceduralTextureSet = {
+  albedo: THREE.Texture;
+  roughness: THREE.Texture;
+  height: THREE.Texture;
+  normal: THREE.Texture;
+  ao: THREE.Texture;
+  source: 'reference-pixel-extraction' | 'procedural';
+};
+
+function referenceMapUrl(spec: SculptMaterialSpec, channel: string): string | null {
+  const reference = spec.referencePbr;
+  if (!reference || typeof reference !== 'object') return null;
+  if (reference.usable === false) return null;
+  const confidence = typeof reference.confidence === 'number'
+    ? reference.confidence
+    : (typeof reference.estimatedFidelity === 'number' ? reference.estimatedFidelity : 0);
+  const threshold = typeof reference.targetThreshold === 'number' ? reference.targetThreshold : 0.7;
+  if (confidence < threshold) return null;
+  const maps = reference.maps;
+  if (!maps || typeof maps !== 'object') return null;
+  const map = (maps as Record<string, unknown>)[channel];
+  if (!map || typeof map !== 'object') return null;
+  const record = map as Record<string, unknown>;
+  const url = typeof record.url === 'string' && record.url.trim() ? record.url : record.path;
+  return typeof url === 'string' && url.trim() ? url : null;
+}
+
+function createLoadedMapTexture(
+  url: string,
+  colorSpace: THREE.ColorSpace,
+  spec: SculptMaterialSpec,
+  options: ProceduralModelOptions,
+): THREE.Texture {
+  const texture = new THREE.TextureLoader().load(url);
+  const projection = spec.textureProjection && typeof spec.textureProjection === 'object' ? spec.textureProjection : {};
+  const repeat = Array.isArray(projection.repeat) ? projection.repeat : [1, 1];
+  texture.colorSpace = colorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(
+    typeof repeat[0] === 'number' ? repeat[0] : 1,
+    typeof repeat[1] === 'number' ? repeat[1] : 1,
+  );
+  texture.anisotropy = Math.max(1, Math.round(options.textureAnisotropy ?? projection.anisotropy ?? 8));
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function makeReferenceTextureSet(spec: SculptMaterialSpec, options: ProceduralModelOptions): ProceduralTextureSet | null {
+  const albedo = referenceMapUrl(spec, 'albedo');
+  const roughness = referenceMapUrl(spec, 'roughness');
+  const height = referenceMapUrl(spec, 'height');
+  const normal = referenceMapUrl(spec, 'normal');
+  const ao = referenceMapUrl(spec, 'ao');
+  if (!albedo || !roughness || !height || !normal || !ao) return null;
+  return {
+    albedo: createLoadedMapTexture(albedo, THREE.SRGBColorSpace, spec, options),
+    roughness: createLoadedMapTexture(roughness, THREE.NoColorSpace, spec, options),
+    height: createLoadedMapTexture(height, THREE.NoColorSpace, spec, options),
+    normal: createLoadedMapTexture(normal, THREE.NoColorSpace, spec, options),
+    ao: createLoadedMapTexture(ao, THREE.NoColorSpace, spec, options),
+    source: 'reference-pixel-extraction',
+  };
+}
+
+function makeProceduralTextureSet(
+  id: string,
+  spec: SculptMaterialSpec,
+  options: ProceduralModelOptions,
+): ProceduralTextureSet | null {
+  if (typeof document === 'undefined') return null;
+  const qualityFirst = (options.qualityPriority ?? 'reference-fidelity') === 'reference-fidelity';
+  const requested = options.textureSize ?? spec.textureResolution;
+  const requestedSize = typeof requested === 'number' && Number.isFinite(requested)
+    ? requested
+    : (qualityFirst ? 1024 : 512);
+  const size = Math.max(256, Math.min(2048, 2 ** Math.round(Math.log2(requestedSize))));
+  const canvases = {
+    albedo: makeCanvas(size),
+    roughness: makeCanvas(size),
+    height: makeCanvas(size),
+    normal: makeCanvas(size),
+    ao: makeCanvas(size),
+  };
+  const contexts = {
+    albedo: canvases.albedo.getContext('2d'),
+    roughness: canvases.roughness.getContext('2d'),
+    height: canvases.height.getContext('2d'),
+    normal: canvases.normal.getContext('2d'),
+    ao: canvases.ao.getContext('2d'),
+  };
+  if (!contexts.albedo || !contexts.roughness || !contexts.height || !contexts.normal || !contexts.ao) return null;
+  const images = {
+    albedo: contexts.albedo.createImageData(size, size),
+    roughness: contexts.roughness.createImageData(size, size),
+    height: contexts.height.createImageData(size, size),
+    normal: contexts.normal.createImageData(size, size),
+    ao: contexts.ao.createImageData(size, size),
+  };
+  const seed = hashString(id);
+  const bands = surfaceBands(spec);
+  const heightField = new Float32Array(size * size);
+  const roughnessField = new Float32Array(size * size);
+  const palette = materialPalette(spec);
+  const fallback = typeof spec.baseColor === 'string' ? spec.baseColor : '#8A7A5F';
+  const colors = (palette.length >= 2 ? palette : [fallback, '#6E614B', '#A08F70']).map(hexToRgb);
+  const baseRoughness = clamp01(readLayerNumber(spec.roughness, ['base'], 0.76));
+  const roughnessVariation = clamp01(readLayerNumber(spec.roughness, ['variation'], 0.18));
+  const colorAmplitude = clamp01(readLayerNumber(spec.colorVariation, ['amplitude', 'variation'], 0.18));
+  const heightCorrelation = clamp01(readLayerNumber(spec.colorVariation, ['heightCorrelation'], 0.3));
+  const colorGradient: ColorGradientSpec | undefined = spec.colorGradient;
+  for (let y = 0; y < size; y += 1) {
+    const v = y / size;
+    for (let x = 0; x < size; x += 1) {
+      const u = x / size;
+      const index = y * size + x;
+      const height = sampleSurface(u, v, bands, seed + 101);
+      const roughNoise = sampleSurface(u, v, bands, seed + 7001);
+      const colorNoise = sampleSurface(u, v, bands, seed + 15013);
+      heightField[index] = height;
+      roughnessField[index] = clamp01(baseRoughness + (roughNoise - 0.5) * roughnessVariation * 2);
+      let color: [number, number, number];
+      if (colorGradient) {
+        // Evidence-derived spatial gradient (Plan 1.3 Workstream C) takes priority
+        // over the noise-based palette blend below — it is a measured trend, not a guess.
+        color = sampleColorGradient(colorGradient, u, v);
+      } else {
+        const paletteValue = clamp01(
+          0.5 + (colorNoise - 0.5) * colorAmplitude * 2 + (height - 0.5) * heightCorrelation
+        );
+        color = mixPalette(colors, paletteValue);
+      }
+      writePixel(images.albedo.data, index * 4, color[0], color[1], color[2]);
+    }
+  }
+  const normalStrength = Math.max(0.05, readLayerNumber(spec.normal, ['strength', 'amplitude'], 0.35));
+  const aoStrength = clamp01(readLayerNumber(spec.ambientOcclusion, ['cavityStrength', 'strength'], 0.35));
+  for (let y = 0; y < size; y += 1) {
+    const up = ((y - 1 + size) % size) * size;
+    const down = ((y + 1) % size) * size;
+    for (let x = 0; x < size; x += 1) {
+      const left = (x - 1 + size) % size;
+      const right = (x + 1) % size;
+      const index = y * size + x;
+      const center = heightField[index];
+      const dx = (heightField[y * size + right] - heightField[y * size + left]) * normalStrength * 6;
+      const dy = (heightField[down + x] - heightField[up + x]) * normalStrength * 6;
+      const inverseLength = 1 / Math.sqrt(dx * dx + dy * dy + 1);
+      const normalX = -dx * inverseLength;
+      const normalY = -dy * inverseLength;
+      const normalZ = inverseLength;
+      const neighborAverage = (
+        heightField[y * size + left] + heightField[y * size + right]
+        + heightField[up + x] + heightField[down + x]
+      ) * 0.25;
+      const cavity = Math.max(0, neighborAverage - center);
+      const ao = clamp01(1 - aoStrength * (cavity * 12 + (1 - center) * 0.16));
+      const offset = index * 4;
+      const heightByte = center * 255;
+      const roughnessByte = roughnessField[index] * 255;
+      writePixel(images.height.data, offset, heightByte, heightByte, heightByte);
+      writePixel(images.roughness.data, offset, roughnessByte, roughnessByte, roughnessByte);
+      writePixel(
+        images.normal.data, offset,
+        (normalX * 0.5 + 0.5) * 255,
+        (normalY * 0.5 + 0.5) * 255,
+        (normalZ * 0.5 + 0.5) * 255,
+      );
+      writePixel(images.ao.data, offset, ao * 255, ao * 255, ao * 255);
+    }
+  }
+  contexts.albedo.putImageData(images.albedo, 0, 0);
+  contexts.roughness.putImageData(images.roughness, 0, 0);
+  contexts.height.putImageData(images.height, 0, 0);
+  contexts.normal.putImageData(images.normal, 0, 0);
+  contexts.ao.putImageData(images.ao, 0, 0);
+  return {
+    albedo: createMapTexture(canvases.albedo, THREE.SRGBColorSpace, spec, options),
+    roughness: createMapTexture(canvases.roughness, THREE.NoColorSpace, spec, options),
+    height: createMapTexture(canvases.height, THREE.NoColorSpace, spec, options),
+    normal: createMapTexture(canvases.normal, THREE.NoColorSpace, spec, options),
+    ao: createMapTexture(canvases.ao, THREE.NoColorSpace, spec, options),
+    source: 'procedural',
+  };
+}
+
+function createSculptMaterial(id: string, spec: SculptMaterialSpec, options: ProceduralModelOptions, denseComponent = false): THREE.MeshPhysicalMaterial {
+  // A material that declares -- with evidence -- that its subject carries no texture
+  // detail gets NO texture set. Synthesising one anyway is not a harmless default: the
+  // branch below then forces color to white and roughness to 1 and reads both from the
+  // generated maps, so the authored albedo and the reference-derived roughness are both
+  // discarded, and the model gains mottling the reference does not have. Measured on the
+  // tuxedo cat, whose black fur rendered as speckled grey-and-white from a palette that
+  // only ever described two flat regions.
+  const textureless = (spec.textureless as { declared?: boolean } | undefined)?.declared === true;
+  const textures = textureless
+    ? null
+    : makeReferenceTextureSet(spec, options) ?? makeProceduralTextureSet(id, spec, options);
+  const material = new THREE.MeshPhysicalMaterial({
+    color: textures ? 0xffffff : clampedAlbedoColor(spec),
+    roughness: textures ? 1 : clamp01(readLayerNumber(spec.roughness, ['base'], 0.76)),
+    metalness: clampPbrMetalness(readLayerNumber(spec.metalness, ['base'], 0.0)),
+    clearcoat: clamp01(readLayerNumber(spec.clearcoat, ['base', 'amount'], 0)),
+    clearcoatRoughness: clamp01(readLayerNumber(spec.clearcoatRoughness, ['base'], 0.25)),
+    transmission: clamp01(readLayerNumber(spec.transmission, ['base', 'amount'], 0)),
+    ior: clampPbrIor(readLayerNumber(spec.ior, ['base', 'value'], 1.5)),
+    thickness: Math.max(0, readLayerNumber(spec.thickness, ['base', 'amount'], 0)),
+    attenuationDistance: Math.max(0.001, readLayerNumber(spec.attenuationDistance, ['base', 'value'], Infinity)),
+    attenuationColor: new THREE.Color(typeof spec.attenuationColor === 'string' ? spec.attenuationColor : '#ffffff'),
+    sheen: clamp01(readLayerNumber(spec.sheen, ['base', 'amount'], 0)),
+    sheenColor: new THREE.Color(typeof spec.sheenColor === 'string' ? spec.sheenColor : '#ffffff'),
+    sheenRoughness: clamp01(readLayerNumber(spec.sheenRoughness, ['base'], 1.0)),
+    iridescence: clamp01(readLayerNumber(spec.iridescence, ['base', 'amount'], 0)),
+    iridescenceIOR: clampPbrIor(readLayerNumber(spec.iridescenceIOR, ['base', 'value'], 1.3)),
+    anisotropy: clamp01(readLayerNumber(spec.anisotropy, ['base', 'amount'], 0)),
+    anisotropyRotation: readLayerNumber(spec.anisotropy, ['rotation'], 0),
+    specularIntensity: clampPbrF0(readLayerNumber(spec.specularF0 ?? spec.f0 ?? spec.specularIntensity, ['base', 'value'], 1.0)),
+    specularColor: new THREE.Color(typeof spec.specularColor === 'string' ? spec.specularColor : '#ffffff'),
+    emissive: new THREE.Color(typeof spec.emissive === 'string' ? spec.emissive : '#000000'),
+    emissiveIntensity: Math.max(0, readLayerNumber(spec.emissiveIntensity, ['base'], 1.0)),
+    opacity: clamp01(readLayerNumber(spec.opacity, ['base'], 1)),
+    transparent: readLayerNumber(spec.transmission, ['base', 'amount'], 0) > 0 || readLayerNumber(spec.opacity, ['base'], 1) < 1,
+    alphaTest: Math.max(0, readLayerNumber(spec.alpha, ['cutoff', 'alphaTest'], 0)),
+    wireframe: options.wireframe ?? false,
+    side: spec.doubleSided === true ? THREE.DoubleSide : THREE.FrontSide,
+    flatShading: spec.flatShading === true,
+  });
+  if (textures) {
+    material.map = textures.albedo;
+    material.roughnessMap = textures.roughness;
+    material.normalMap = textures.normal;
+    material.normalScale.setScalar(Math.max(0.05, readLayerNumber(spec.normal, ['strength', 'amplitude'], 0.35)));
+    material.aoMap = textures.ao;
+    material.aoMap.channel = 0;
+    material.aoMapIntensity = readLayerNumber(spec.ambientOcclusion, ['cavityStrength', 'strength'], 0.35);
+    const denseMesh = denseComponent || spec.denseMesh === true || spec.geometryDensity === 'dense' || spec.topologyClass === 'dense';
+    const bumpScale = Math.max(0, readLayerNumber(spec.bump, ['amplitude', 'strength'], 0));
+    const effectiveBumpScale = denseMesh ? Math.max(0.05, bumpScale) : bumpScale;
+    if (effectiveBumpScale > 0) {
+      material.bumpMap = textures.height;
+      material.bumpScale = effectiveBumpScale;
+    }
+    const displacementScale = Math.max(0, readLayerNumber(spec.displacement, ['amplitude', 'strength'], 0));
+    const effectiveDisplacementScale = denseMesh ? Math.max(0.005, displacementScale) : displacementScale;
+    if (effectiveDisplacementScale > 0) {
+      material.displacementMap = textures.height;
+      material.displacementScale = effectiveDisplacementScale;
+      material.displacementBias = -effectiveDisplacementScale * 0.5;
+    }
+  }
+  material.envMapIntensity = readLayerNumber(spec, ['envMapIntensity'], 0.8);
+  material.userData.sculptMaterial = spec;
+  material.userData.proceduralMapsIndependent = true;
+  material.userData.pbrConstraints = { albedoRange: [30, 240], binaryMetalness: true, f0Range: [0.02, 1], iorRange: [1, 2.5] };
+  material.userData.pbrTextureSource = textures?.source ?? 'flat-fallback';
+  material.userData.referencePbr = spec.referencePbr ?? null;
+  material.userData.referenceMaterialId = spec.referenceMaterialId ?? spec.materialReference?.profileId ?? null;
+  material.userData.materialEvidence = spec.materialEvidence ?? null;
+  material.userData.validationViews = spec.materialReference?.validationViews ?? [];
+  material.needsUpdate = true;
+  return material;
+}
+
+type AttachmentEndpoint = {
+  start: THREE.Vector3;
+  midpoint: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  length: number;
+  baseRadius: number;
+  endRadius: number;
+};
+
+function readVector3(value: unknown, fallback: [number, number, number]): THREE.Vector3 {
+  if (Array.isArray(value) && value.length === 3 && value.every((item) => typeof item === 'number')) {
+    return new THREE.Vector3(value[0], value[1], value[2]);
+  }
+  return new THREE.Vector3(fallback[0], fallback[1], fallback[2]);
+}
+
+function readNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function makeAttachmentEndpoint(attachment: unknown): AttachmentEndpoint | null {
+  if (!attachment || typeof attachment !== 'object') return null;
+  const record = attachment as Record<string, unknown>;
+  const start = readVector3(record.localStart, [0, 0, 0]);
+  const end = readVector3(record.localEnd, [0, 1, 0]);
+  const delta = end.clone().sub(start);
+  const length = delta.length();
+  if (length <= 0.0001) return null;
+  const direction = delta.clone().normalize();
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+  const baseRadius = Math.max(0.005, readNumber(record.baseRadius, 0.06));
+  const endRadius = Math.max(0.003, readNumber(record.endRadius, baseRadius * 0.55));
+  return {
+    start,
+    midpoint: delta.multiplyScalar(0.5),
+    quaternion,
+    length,
+    baseRadius,
+    endRadius,
+  };
+}
+
+// Generated from ObjectSculptSpec target: Perpetual Calendar Chronograph
+// Sculpt build pass: blockout
+// This factory is intentionally pass-gated. Finish browser screenshot review before unlocking deeper passes.
+export function createPerpetualCalendarChronographModel(options: ProceduralModelOptions = {}): THREE.Group {
+  const root = new THREE.Group();
+  root.name = "Perpetual Calendar Chronograph";
+  root.userData.reconstructionEvidence = {"itemFamily": null, "subtype": null, "componentAdapter": null, "route": null, "exactnessTier": null, "referenceCamera": {"solved": false, "fovDegrees": 30.0, "aspect": 0.7136, "orientation": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}, "positionHint": [0.0, 0.0, 14.0], "note": "near-orthographic front product view; review renders use fov 30 at z=14 facing origin"}, "approximationNotes": []};
+  root.userData.materialPipeline = {};
+  root.userData.materialReferenceRegistry = null;
+
+  const materialMap: Record<string, THREE.Material> = {};
+  materialMap["mat-case-polished"] = createSculptMaterial(
+    "mat-case-polished",
+    {"id": "mat-case-polished", "name": "Polished Platinum", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#E8E9EB", "color": "#E8E9EB", "albedo": {"dominant": "#E8E9EB", "secondary": ["#C9CCD1", "#F4F5F7"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#E8E9EB", "#C9CCD1", "#F4F5F7"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 1.5, "amplitude": 0.06, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 10, "amplitude": 0.02, "role": "soft polish waviness"}, {"id": "micro", "frequency": 48, "amplitude": 0.015, "role": "micro polish breakup under grazing light"}], "roughness": {"base": 0.14, "variation": 0.05, "map": "independent-procedural-field", "localResponse": "slightly higher roughness in lug chamfer transitions"}, "metalness": {"base": 1.0, "variation": 0.0}, "normal": {"pattern": "none", "strength": 0.0, "scale": 1.0, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "mirror-polished platinum; env-map driven curvature read (det zones r1c2)"], "notes": "mirror-polished platinum; env-map driven curvature read (det zones r1c2)", "referencePbr": {"usable": true, "confidence": 0.831, "estimatedFidelity": 0.831, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-case-polished.png", "palette": ["#231B19", "#1B1513", "#2D2422", "#100908", "#564D46"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-polished\\mat-case-polished_albedo.png", "url": "mat-case-polished_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-polished\\mat-case-polished_roughness.png", "url": "mat-case-polished_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-polished\\mat-case-polished_height.png", "url": "mat-case-polished_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-polished\\mat-case-polished_normal.png", "url": "mat-case-polished_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-polished\\mat-case-polished_ao.png", "url": "mat-case-polished_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-case-brushed"] = createSculptMaterial(
+    "mat-case-brushed",
+    {"id": "mat-case-brushed", "name": "Brushed Platinum", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#D6D8DB", "color": "#D6D8DB", "albedo": {"dominant": "#D6D8DB", "secondary": ["#C2C5C9"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#D6D8DB", "#C2C5C9"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 1.5, "amplitude": 0.05, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 24, "amplitude": 0.06, "role": "brush lines"}, {"id": "micro", "frequency": 80, "amplitude": 0.03, "role": "brush micro sparkle"}], "roughness": {"base": 0.34, "variation": 0.08, "map": "independent-procedural-field", "localResponse": "anisotropic satin: brighter along brush direction"}, "metalness": {"base": 1.0, "variation": 0.0}, "normal": {"pattern": "linear brushing (anisotropic streak)", "strength": 0.25, "scale": 30, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "pusher tops + movement plate; linear satin brushing (det-12)"], "notes": "pusher tops + movement plate; linear satin brushing (det-12)", "referencePbr": {"usable": true, "confidence": 0.86, "estimatedFidelity": 0.86, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-case-brushed.png", "palette": ["#D1CBC5", "#DDD7D1", "#B0A7A1", "#756E69", "#F3EEEA"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-brushed\\mat-case-brushed_albedo.png", "url": "mat-case-brushed_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-brushed\\mat-case-brushed_roughness.png", "url": "mat-case-brushed_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-brushed\\mat-case-brushed_height.png", "url": "mat-case-brushed_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-brushed\\mat-case-brushed_normal.png", "url": "mat-case-brushed_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-case-brushed\\mat-case-brushed_ao.png", "url": "mat-case-brushed_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-dial-plate"] = createSculptMaterial(
+    "mat-dial-plate",
+    {"id": "mat-dial-plate", "name": "Sunburst Gradient Dial", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#4A423C", "color": "#4A423C", "albedo": {"dominant": "#4A423C", "secondary": ["#6E6259", "#2A241F", "#191410"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#4A423C", "#6E6259", "#2A241F", "#191410"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 1.2, "amplitude": 0.3, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 40, "amplitude": 0.08, "role": "radial brushing rows"}, {"id": "micro", "frequency": 120, "amplitude": 0.03, "role": "print edge micro relief"}], "roughness": {"base": 0.5, "variation": 0.12, "map": "independent-procedural-field", "localResponse": "satin sheen strongest along radial highlight; print regions slightly glossier"}, "metalness": {"base": 0.25, "variation": 0.1}, "normal": {"pattern": "radial sunburst micro-brushing", "strength": 0.15, "scale": 90, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [{"id": "mat-dial-sunburst", "description": "radial gradient stops: 0.0 #6E6259 / 0.55 #4A423C / 0.8 #2A241F / 1.0 #191410 (det-17)", "region": "full dial disc, radial", "channels": ["albedo", "roughness"], "evidenceRefs": ["full-object", "zone-dial-center"], "confidence": 0.9}, {"id": "mat-tachy-band", "description": "near-black matte band r0.80->1.0 of dial radius with white print: BASE 1000, 500->160 numerals, tick arrays, SWISS MADE (det-05)", "region": "outer annulus", "channels": ["albedo", "roughness"], "evidenceRefs": ["zone-right-flank"], "confidence": 0.9}, {"id": "mat-dial-print", "description": "off-white #EFEDE6 print: railway minute track, boxed 5-min numerals, date arc 1-31, PATEK PHILIPPE GENEVE, subdial scales (det-06, det-16, det-03)", "region": "annular + subdial + arc text zones", "channels": ["albedo", "roughness"], "evidenceRefs": ["full-object", "zone-dial-center"], "confidence": 0.9}], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "canvas-generated 2048px albedo carrying all print; gradient + print never geometry"], "notes": "canvas-generated 2048px albedo carrying all print; gradient + print never geometry", "referencePbr": {"usable": true, "confidence": 0.86, "estimatedFidelity": 0.86, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-dial-plate.png", "palette": ["#372E2A", "#423733", "#F1E8E3", "#251C17", "#5E524D"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_albedo.png", "url": "mat-dial-plate_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_roughness.png", "url": "mat-dial-plate_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_height.png", "url": "mat-dial-plate_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_normal.png", "url": "mat-dial-plate_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_ao.png", "url": "mat-dial-plate_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-hands-polished"] = createSculptMaterial(
+    "mat-hands-polished",
+    {"id": "mat-hands-polished", "name": "Polished White-Metal Furniture", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#EDEEF0", "color": "#EDEEF0", "albedo": {"dominant": "#EDEEF0", "secondary": ["#CDD0D4"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#EDEEF0", "#CDD0D4"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 2, "amplitude": 0.04, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 16, "amplitude": 0.02, "role": "facet planes"}, {"id": "micro", "frequency": 64, "amplitude": 0.01, "role": "polish micro"}], "roughness": {"base": 0.1, "variation": 0.04, "map": "independent-procedural-field", "localResponse": "facet-dependent highlight flips"}, "metalness": {"base": 1.0, "variation": 0.0}, "normal": {"pattern": "none", "strength": 0.0, "scale": 1.0, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "hands, markers, aperture frames (det-07, det-09)"], "notes": "hands, markers, aperture frames (det-07, det-09)", "referencePbr": {"usable": true, "confidence": 0.831, "estimatedFidelity": 0.831, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-hands-polished.png", "palette": ["#302623", "#352B28", "#3B312F", "#251B19", "#443A37"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_albedo.png", "url": "mat-hands-polished_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_roughness.png", "url": "mat-hands-polished_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_height.png", "url": "mat-hands-polished_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_normal.png", "url": "mat-hands-polished_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_ao.png", "url": "mat-hands-polished_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-chrono-frosted"] = createSculptMaterial(
+    "mat-chrono-frosted",
+    {"id": "mat-chrono-frosted", "name": "Frosted Needle Metal", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#D9DBDD", "color": "#D9DBDD", "albedo": {"dominant": "#D9DBDD", "secondary": ["#C4C7CA"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#D9DBDD", "#C4C7CA"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 2, "amplitude": 0.03, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 30, "amplitude": 0.04, "role": "blast grain"}, {"id": "micro", "frequency": 110, "amplitude": 0.05, "role": "grain sparkle"}], "roughness": {"base": 0.46, "variation": 0.08, "map": "independent-procedural-field", "localResponse": "uniform matte bead-blast"}, "metalness": {"base": 1.0, "variation": 0.0}, "normal": {"pattern": "none", "strength": 0.0, "scale": 1.0, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "chrono needle (det-10)"], "notes": "chrono needle (det-10)", "referencePbr": {"usable": true, "confidence": 0.829, "estimatedFidelity": 0.829, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-chrono-frosted.png", "palette": ["#40352E", "#564B44", "#211B24", "#DCD6D4", "#867B75"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-chrono-frosted\\mat-chrono-frosted_albedo.png", "url": "mat-chrono-frosted_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-chrono-frosted\\mat-chrono-frosted_roughness.png", "url": "mat-chrono-frosted_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-chrono-frosted\\mat-chrono-frosted_height.png", "url": "mat-chrono-frosted_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-chrono-frosted\\mat-chrono-frosted_normal.png", "url": "mat-chrono-frosted_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-chrono-frosted\\mat-chrono-frosted_ao.png", "url": "mat-chrono-frosted_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-crystal"] = createSculptMaterial(
+    "mat-crystal",
+    {"id": "mat-crystal", "name": "Sapphire Crystal", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#FFFFFF", "color": "#FFFFFF", "albedo": {"dominant": "#FFFFFF", "secondary": [], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#FFFFFF"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "roughness": {"base": 0.03, "variation": 0.01, "map": "independent-procedural-field", "localResponse": "uniform optical polish"}, "metalness": {"base": 0.0, "variation": 0.0}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "transmission glass; controlled streak reflections from area lights"], "notes": "transmission glass; controlled streak reflections from area lights", "clearcoat": {"value": 0.6, "roughness": 0.05}, "transmission": {"value": 1.0, "ior": 1.76, "thickness": 0.25}, "textureless": {"declared": true, "reason": "optically clear sapphire crystal: transmission-only material, zero surface texture detail; reflections are environment-driven", "evidence": ["full-object (crystal region shows only smooth specular streaks, no surface pattern)", "zone-right-flank (crystal edge: clean refraction, no texture)"]}},
+    options
+  );
+  materialMap["mat-moonphase"] = createSculptMaterial(
+    "mat-moonphase",
+    {"id": "mat-moonphase", "name": "Moonphase Lacquer Disc", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#1B2447", "color": "#1B2447", "albedo": {"dominant": "#1B2447", "secondary": ["#2A3560", "#E8DCB8"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#1B2447", "#2A3560", "#E8DCB8"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 2, "amplitude": 0.1, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 14, "amplitude": 0.05, "role": "surface relief"}, {"id": "micro", "frequency": 60, "amplitude": 0.02, "role": "highlight breakup"}], "roughness": {"base": 0.25, "variation": 0.08, "map": "independent-procedural-field", "localResponse": "gloss lacquer, stars slightly rougher"}, "metalness": {"base": 0.6, "variation": 0.1}, "normal": {"pattern": "none", "strength": 0.0, "scale": 1.0, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [{"id": "mat-moon-art", "description": "canvas art: 6-point textured stars + pale-gold moon w/ crater dots on deep navy (det-02)", "region": "full disc", "channels": ["albedo", "roughness"], "evidenceRefs": ["full-object", "zone-dial-center"], "confidence": 0.9}], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "navy metallic lacquer (det-02)"], "notes": "navy metallic lacquer (det-02)", "referencePbr": {"usable": true, "confidence": 0.86, "estimatedFidelity": 0.86, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-moonphase.png", "palette": ["#1E1A29", "#463B35", "#302725", "#6A5E57", "#1E1717"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_albedo.png", "url": "mat-moonphase_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_roughness.png", "url": "mat-moonphase_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_height.png", "url": "mat-moonphase_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_normal.png", "url": "mat-moonphase_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-moonphase\\mat-moonphase_ao.png", "url": "mat-moonphase_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-strap"] = createSculptMaterial(
+    "mat-strap",
+    {"id": "mat-strap", "name": "Braided Textile Strap", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#23262A", "color": "#23262A", "albedo": {"dominant": "#23262A", "secondary": ["#2C3036", "#191B1F"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#23262A", "#2C3036", "#191B1F"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 1.5, "amplitude": 0.25, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 9, "amplitude": 0.55, "role": "braid cord rows (silhouette-visible ripple)"}, {"id": "micro", "frequency": 40, "amplitude": 0.12, "role": "fiber fuzz breakup"}], "roughness": {"base": 0.8, "variation": 0.12, "map": "independent-procedural-field", "localResponse": "deep AO between cords; sheen along cord crowns"}, "metalness": {"base": 0.0, "variation": 0.0}, "normal": {"pattern": "chevron braid weave", "strength": 0.85, "scale": 9, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [{"id": "mat-strap-weave", "description": "diagonal chevron braid ~9 columns, chunky cords, rolled raised edges (det-14)", "region": "full strap top surface", "channels": ["albedo", "roughness", "normal", "displacement"], "evidenceRefs": ["zone-strap-bottom"], "confidence": 0.9}], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "CORRECTED: braided textile, not embossed leather (det-14)"], "notes": "CORRECTED: braided textile, not embossed leather (det-14)", "sheen": {"value": 0.35, "color": "#3A3E45"}, "referencePbr": {"usable": true, "confidence": 0.86, "estimatedFidelity": 0.86, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-strap.png", "palette": ["#917A6B", "#907B6F", "#231D18", "#4A4039", "#77665D"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-strap\\mat-strap_albedo.png", "url": "mat-strap_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-strap\\mat-strap_roughness.png", "url": "mat-strap_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-strap\\mat-strap_height.png", "url": "mat-strap_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-strap\\mat-strap_normal.png", "url": "mat-strap_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-strap\\mat-strap_ao.png", "url": "mat-strap_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-stitch"] = createSculptMaterial(
+    "mat-stitch",
+    {"id": "mat-stitch", "name": "Ivory Rope Stitching", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#E8E2D4", "color": "#E8E2D4", "albedo": {"dominant": "#E8E2D4", "secondary": ["#D9D2C2"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#E8E2D4", "#D9D2C2"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 3, "amplitude": 0.1, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 26, "amplitude": 0.3, "role": "cord twist ridges"}, {"id": "micro", "frequency": 90, "amplitude": 0.08, "role": "fiber micro"}], "roughness": {"base": 0.62, "variation": 0.1, "map": "independent-procedural-field", "localResponse": "twisted cord shading"}, "metalness": {"base": 0.0, "variation": 0.0}, "normal": {"pattern": "none", "strength": 0.0, "scale": 1.0, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "rope-style contrast stitches (det-15)"], "notes": "rope-style contrast stitches (det-15)", "sheen": {"value": 0.4, "color": "#F4EFE3"}, "referencePbr": {"usable": true, "confidence": 0.843, "estimatedFidelity": 0.843, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-stitch.png", "palette": ["#343232", "#434141", "#262425", "#5D5C5C", "#CCC7C3"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-stitch\\mat-stitch_albedo.png", "url": "mat-stitch_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-stitch\\mat-stitch_roughness.png", "url": "mat-stitch_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-stitch\\mat-stitch_height.png", "url": "mat-stitch_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-stitch\\mat-stitch_normal.png", "url": "mat-stitch_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-stitch\\mat-stitch_ao.png", "url": "mat-stitch_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+  materialMap["mat-aperture-disc"] = createSculptMaterial(
+    "mat-aperture-disc",
+    {"id": "mat-aperture-disc", "name": "Printed Indication Discs", "type": "physical", "shaderModel": "MeshPhysicalMaterial", "baseColor": "#F2F0EA", "color": "#F2F0EA", "albedo": {"dominant": "#F2F0EA", "secondary": ["#111111"], "samplingNotes": "image-observed local color zones"}, "colorVariation": {"palette": ["#F2F0EA", "#111111"], "pattern": "zoned", "amplitude": 0.06, "heightCorrelation": 0.2}, "textureResolution": 2048, "textureProjection": {"mode": "uv", "repeat": [1, 1], "anisotropy": 8, "texelDensityIntent": "stable world-scale detail"}, "surfaceFrequencyBands": [{"id": "macro", "frequency": 2, "amplitude": 0.1, "role": "broad tonal/height breakup"}, {"id": "meso", "frequency": 14, "amplitude": 0.05, "role": "surface relief"}, {"id": "micro", "frequency": 60, "amplitude": 0.02, "role": "highlight breakup"}], "roughness": {"base": 0.5, "variation": 0.05, "map": "independent-procedural-field", "localResponse": "matte print disc"}, "metalness": {"base": 0.0, "variation": 0.0}, "normal": {"pattern": "none", "strength": 0.0, "scale": 1.0, "space": "tangent"}, "bump": {"pattern": "none", "amplitude": 0.0, "scale": 1.0}, "displacement": {"pattern": "none", "amplitude": 0.0, "scale": 1.0, "silhouetteAffects": false}, "ambientOcclusion": {"cavityStrength": 0.3, "contactShadowBias": 0.3, "notes": "darken recesses, wells, grooves"}, "wear": {"edgeWear": 0.0, "scratches": [], "chips": []}, "dirt": {"amount": 0.0, "cavityBias": 0.0, "color": "#1A1713"}, "localOverrides": [], "shaderNotes": ["MeshPhysicalMaterial; independent albedo/roughness/normal channels", "white discs w/ black canvas print: SAT, MAR, 3 (det-01, det-04)"], "notes": "white discs w/ black canvas print: SAT, MAR, 3 (det-01, det-04)", "referencePbr": {"usable": true, "confidence": 0.753, "estimatedFidelity": 0.753, "sourceCrop": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-aperture-disc.png", "palette": ["#352C28", "#2E2623", "#3E342F", "#554942", "#F1E8E6"], "maps": {"albedo": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-aperture-disc\\mat-aperture-disc_albedo.png", "url": "mat-aperture-disc_albedo.png", "channel": "albedo", "source": "reference-pixel-extraction"}, "roughness": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-aperture-disc\\mat-aperture-disc_roughness.png", "url": "mat-aperture-disc_roughness.png", "channel": "roughness", "source": "reference-pixel-extraction"}, "height": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-aperture-disc\\mat-aperture-disc_height.png", "url": "mat-aperture-disc_height.png", "channel": "height", "source": "reference-pixel-extraction"}, "normal": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-aperture-disc\\mat-aperture-disc_normal.png", "url": "mat-aperture-disc_normal.png", "channel": "normal", "source": "reference-pixel-extraction"}, "ao": {"path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-aperture-disc\\mat-aperture-disc_ao.png", "url": "mat-aperture-disc_ao.png", "channel": "ao", "source": "reference-pixel-extraction"}}, "note": "single-image reference-derived inference (not inverse rendering); crop verified on-part"}},
+    options
+  );
+
+  const nodes: Record<string, THREE.Object3D> = { root };
+  const meshes: Record<string, THREE.Mesh> = {};
+  const sockets: Record<string, THREE.Object3D> = {};
+  const colliders: Record<string, unknown> = {};
+  const destructionGroups: Record<string, THREE.Object3D[]> = {};
+
+  const endpoint_root_0 = makeAttachmentEndpoint(null);
+  const node_root_0 = new THREE.Group();
+  node_root_0.name = "Perpetual Calendar Chronograph__pivot";
+  node_root_0.scale.set(1, 1, 1);
+  if (endpoint_root_0) {
+    node_root_0.position.copy(endpoint_root_0.start);
+    node_root_0.rotation.set(0.0, 0.0, 0.0);
+  } else {
+    node_root_0.position.set(0.0, 0.0, 0.0);
+    node_root_0.rotation.set(0.0, 0.0, 0.0);
+  }
+  node_root_0.userData.sculptComponent = {"id": "root", "name": "Perpetual Calendar Chronograph", "level": "macro", "role": "body", "importance": 1.0, "confidence": 0.95, "primitive": "box", "topologyClass": "assembled-solid", "topologyRationale": "Logical bounding volume for the full watch stack (case cylinder + strap slabs); children carry real geometry.", "geometryDescriptor": {"topologyIntent": "empty pivot group; no rendered geometry of its own", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": null, "attachment": null, "dimensions": {"width": 4.6, "height": 12.0, "depth": 1.9, "units": "world (1 unit = 10 mm)", "confidence": 0.95}, "transform": {"position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "root", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "root", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-case-polished"}}, "material": "mat-case-polished", "materialLayers": ["mat-case-polished"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(232, 233, 235, 1)", "secondaryAlbedo": "rgba(201, 204, 209, 1)", "materialClass": "metal", "materialClassConfidence": 0.95}};
+  node_root_0.userData.actionProfile = {"animationRole": "root", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "root", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-case-polished"}};
+  (nodes["root"] ?? root).add(node_root_0);
+  nodes["root"] = node_root_0;
+  const mesh_root_0Geometry = endpoint_root_0
+    ? new THREE.CylinderGeometry(endpoint_root_0.endRadius, endpoint_root_0.baseRadius, endpoint_root_0.length, 32, 12)
+    : new THREE.BoxGeometry(1, 1, 1, 12, 12, 12);
+  if (!endpoint_root_0) {
+    mesh_root_0Geometry.scale(1.0, 1.0, 1.0);
+  }
+  const mesh_root_0 = new THREE.Mesh(
+    mesh_root_0Geometry,
+    materialMap["mat-case-polished"] ?? new THREE.MeshStandardMaterial({ color: 0x888888 })
+  );
+  mesh_root_0.name = "Perpetual Calendar Chronograph";
+  if (endpoint_root_0) {
+    mesh_root_0.position.copy(endpoint_root_0.midpoint);
+    mesh_root_0.quaternion.copy(endpoint_root_0.quaternion);
+  }
+  mesh_root_0.castShadow = options.castShadow ?? true;
+  mesh_root_0.receiveShadow = options.receiveShadow ?? true;
+  mesh_root_0.userData.sculptComponent = {"id": "root", "name": "Perpetual Calendar Chronograph", "level": "macro", "role": "body", "importance": 1.0, "confidence": 0.95, "primitive": "box", "topologyClass": "assembled-solid", "topologyRationale": "Logical bounding volume for the full watch stack (case cylinder + strap slabs); children carry real geometry.", "geometryDescriptor": {"topologyIntent": "empty pivot group; no rendered geometry of its own", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": null, "attachment": null, "dimensions": {"width": 4.6, "height": 12.0, "depth": 1.9, "units": "world (1 unit = 10 mm)", "confidence": 0.95}, "transform": {"position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "root", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "root", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-case-polished"}}, "material": "mat-case-polished", "materialLayers": ["mat-case-polished"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(232, 233, 235, 1)", "secondaryAlbedo": "rgba(201, 204, 209, 1)", "materialClass": "metal", "materialClassConfidence": 0.95}};
+  node_root_0.add(mesh_root_0);
+  meshes["root"] = mesh_root_0;
+  colliders["root"] = {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"};
+  destructionGroups["root"] ??= [];
+  destructionGroups["root"].push(node_root_0);
+
+  const endpoint_strap_assembly_1 = makeAttachmentEndpoint(null);
+  const node_strap_assembly_1 = new THREE.Group();
+  node_strap_assembly_1.name = "Strap Assembly__pivot";
+  node_strap_assembly_1.scale.set(1, 1, 1);
+  if (endpoint_strap_assembly_1) {
+    node_strap_assembly_1.position.copy(endpoint_strap_assembly_1.start);
+    node_strap_assembly_1.rotation.set(0.0, 0.0, 0.0);
+  } else {
+    node_strap_assembly_1.position.set(0.0, 0.0, -0.15);
+    node_strap_assembly_1.rotation.set(0.0, 0.0, 0.0);
+  }
+  node_strap_assembly_1.userData.sculptComponent = {"id": "strap-assembly", "name": "Strap Assembly", "level": "macro", "role": "assembly-group", "importance": 0.85, "confidence": 0.85, "primitive": "box", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot spanning the full strap column (both halves) for blockout massing; children carry the curved geometry.", "geometryDescriptor": {"topologyIntent": "box construction for Strap Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "root-core", "localStart": [0, -4.7, -0.35], "localEnd": [0, 4.55, -0.35], "contactType": "socket", "embedDepth": 0.15, "gapTolerance": 0.01}, "dimensions": {"width": 2.24, "height": 12.0, "depth": 0.9, "units": "world (1 unit = 10 mm)", "confidence": 0.85}, "transform": {"position": [0, 0, -0.15], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "strap-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-strap"}}, "material": "mat-strap", "materialLayers": ["mat-strap"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object", "zone-strap-bottom"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(35, 38, 42, 1)", "secondaryAlbedo": "rgba(44, 48, 54, 1)", "materialClass": "fabric", "materialClassConfidence": 0.95}};
+  node_strap_assembly_1.userData.actionProfile = {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "strap-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-strap"}};
+  (nodes["root"] ?? root).add(node_strap_assembly_1);
+  nodes["strap-assembly"] = node_strap_assembly_1;
+  const mesh_strap_assembly_1Geometry = endpoint_strap_assembly_1
+    ? new THREE.CylinderGeometry(endpoint_strap_assembly_1.endRadius, endpoint_strap_assembly_1.baseRadius, endpoint_strap_assembly_1.length, 32, 12)
+    : new THREE.BoxGeometry(1, 1, 1, 12, 12, 12);
+  if (!endpoint_strap_assembly_1) {
+    mesh_strap_assembly_1Geometry.scale(1.0, 1.0, 1.0);
+  }
+  const mesh_strap_assembly_1 = new THREE.Mesh(
+    mesh_strap_assembly_1Geometry,
+    materialMap["mat-strap"] ?? new THREE.MeshStandardMaterial({ color: 0x888888 })
+  );
+  mesh_strap_assembly_1.name = "Strap Assembly";
+  if (endpoint_strap_assembly_1) {
+    mesh_strap_assembly_1.position.copy(endpoint_strap_assembly_1.midpoint);
+    mesh_strap_assembly_1.quaternion.copy(endpoint_strap_assembly_1.quaternion);
+  }
+  mesh_strap_assembly_1.castShadow = options.castShadow ?? true;
+  mesh_strap_assembly_1.receiveShadow = options.receiveShadow ?? true;
+  mesh_strap_assembly_1.userData.sculptComponent = {"id": "strap-assembly", "name": "Strap Assembly", "level": "macro", "role": "assembly-group", "importance": 0.85, "confidence": 0.85, "primitive": "box", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot spanning the full strap column (both halves) for blockout massing; children carry the curved geometry.", "geometryDescriptor": {"topologyIntent": "box construction for Strap Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "root-core", "localStart": [0, -4.7, -0.35], "localEnd": [0, 4.55, -0.35], "contactType": "socket", "embedDepth": 0.15, "gapTolerance": 0.01}, "dimensions": {"width": 2.24, "height": 12.0, "depth": 0.9, "units": "world (1 unit = 10 mm)", "confidence": 0.85}, "transform": {"position": [0, 0, -0.15], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "strap-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-strap"}}, "material": "mat-strap", "materialLayers": ["mat-strap"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object", "zone-strap-bottom"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(35, 38, 42, 1)", "secondaryAlbedo": "rgba(44, 48, 54, 1)", "materialClass": "fabric", "materialClassConfidence": 0.95}};
+  node_strap_assembly_1.add(mesh_strap_assembly_1);
+  meshes["strap-assembly"] = mesh_strap_assembly_1;
+  colliders["strap-assembly"] = {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"};
+  destructionGroups["strap-assembly"] ??= [];
+  destructionGroups["strap-assembly"].push(node_strap_assembly_1);
+
+  const attachment_case_assembly_2 = {"parentSocket": "root-core", "localStart": [0, 0, 0], "localEnd": [0, 0, 0], "contactType": "socket", "embedDepth": 0.2, "gapTolerance": 0.01};
+  const endpoint_case_assembly_2 = makeAttachmentEndpoint(attachment_case_assembly_2);
+  const node_case_assembly_2 = new THREE.Group();
+  node_case_assembly_2.name = "Case Assembly__pivot";
+  node_case_assembly_2.scale.set(1, 1, 1);
+  if (endpoint_case_assembly_2) {
+    node_case_assembly_2.position.copy(endpoint_case_assembly_2.start);
+    node_case_assembly_2.rotation.set(0.0, 0.0, 0.0);
+  } else {
+    node_case_assembly_2.position.set(0.0, 0.0, 0.0);
+    node_case_assembly_2.rotation.set(0.0, 0.0, 0.0);
+  }
+  node_case_assembly_2.userData.sculptComponent = {"id": "case-assembly", "name": "Case Assembly", "level": "macro", "role": "assembly-group", "importance": 1.0, "confidence": 0.95, "primitive": "cylinder", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot for case band, bezel, crystal, back, lugs, crown, pushers; cylindrical envelope.", "geometryDescriptor": {"topologyIntent": "cylinder construction for Case Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "root-core", "localStart": [0, 0, 0], "localEnd": [0, 0, 0], "contactType": "socket", "embedDepth": 0.2, "gapTolerance": 0.01}, "dimensions": {"width": 4.6, "height": 4.6, "depth": 1.7, "units": "world (1 unit = 10 mm)", "confidence": 0.95}, "transform": {"position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "case-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-case-polished"}}, "material": "mat-case-polished", "materialLayers": ["mat-case-polished"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(232, 233, 235, 1)", "secondaryAlbedo": "rgba(201, 204, 209, 1)", "materialClass": "metal", "materialClassConfidence": 0.95}};
+  node_case_assembly_2.userData.actionProfile = {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "case-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-case-polished"}};
+  (nodes["root"] ?? root).add(node_case_assembly_2);
+  nodes["case-assembly"] = node_case_assembly_2;
+  const mesh_case_assembly_2Geometry = endpoint_case_assembly_2
+    ? new THREE.CylinderGeometry(endpoint_case_assembly_2.endRadius, endpoint_case_assembly_2.baseRadius, endpoint_case_assembly_2.length, 32, 12)
+    : new THREE.CylinderGeometry(0.5, 0.5, 1, 48, 16);
+  if (!endpoint_case_assembly_2) {
+    mesh_case_assembly_2Geometry.scale(1.0, 1.0, 1.0);
+  }
+  const mesh_case_assembly_2 = new THREE.Mesh(
+    mesh_case_assembly_2Geometry,
+    materialMap["mat-case-polished"] ?? new THREE.MeshStandardMaterial({ color: 0x888888 })
+  );
+  mesh_case_assembly_2.name = "Case Assembly";
+  if (endpoint_case_assembly_2) {
+    mesh_case_assembly_2.position.copy(endpoint_case_assembly_2.midpoint);
+    mesh_case_assembly_2.quaternion.copy(endpoint_case_assembly_2.quaternion);
+  }
+  mesh_case_assembly_2.castShadow = options.castShadow ?? true;
+  mesh_case_assembly_2.receiveShadow = options.receiveShadow ?? true;
+  mesh_case_assembly_2.userData.sculptComponent = {"id": "case-assembly", "name": "Case Assembly", "level": "macro", "role": "assembly-group", "importance": 1.0, "confidence": 0.95, "primitive": "cylinder", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot for case band, bezel, crystal, back, lugs, crown, pushers; cylindrical envelope.", "geometryDescriptor": {"topologyIntent": "cylinder construction for Case Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "root-core", "localStart": [0, 0, 0], "localEnd": [0, 0, 0], "contactType": "socket", "embedDepth": 0.2, "gapTolerance": 0.01}, "dimensions": {"width": 4.6, "height": 4.6, "depth": 1.7, "units": "world (1 unit = 10 mm)", "confidence": 0.95}, "transform": {"position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "case-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-case-polished"}}, "material": "mat-case-polished", "materialLayers": ["mat-case-polished"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(232, 233, 235, 1)", "secondaryAlbedo": "rgba(201, 204, 209, 1)", "materialClass": "metal", "materialClassConfidence": 0.95}};
+  node_case_assembly_2.add(mesh_case_assembly_2);
+  meshes["case-assembly"] = mesh_case_assembly_2;
+  colliders["case-assembly"] = {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"};
+  destructionGroups["case-assembly"] ??= [];
+  destructionGroups["case-assembly"].push(node_case_assembly_2);
+
+  const attachment_dial_assembly_3 = {"parentSocket": "case-bore", "localStart": [0, 0, 0.24], "localEnd": [0, 0, 0.34], "contactType": "socket", "embedDepth": 0.05, "gapTolerance": 0.01};
+  const endpoint_dial_assembly_3 = makeAttachmentEndpoint(attachment_dial_assembly_3);
+  const node_dial_assembly_3 = new THREE.Group();
+  node_dial_assembly_3.name = "Dial Assembly__pivot";
+  node_dial_assembly_3.scale.set(1, 1, 1);
+  if (endpoint_dial_assembly_3) {
+    node_dial_assembly_3.position.copy(endpoint_dial_assembly_3.start);
+    node_dial_assembly_3.rotation.set(0.0, 0.0, 0.0);
+  } else {
+    node_dial_assembly_3.position.set(0.0, 0.0, 0.28);
+    node_dial_assembly_3.rotation.set(0.0, 0.0, 0.0);
+  }
+  node_dial_assembly_3.userData.sculptComponent = {"id": "dial-assembly", "name": "Dial Assembly", "level": "macro", "role": "assembly-group", "importance": 1.0, "confidence": 0.95, "primitive": "cylinder", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot for dial plate, rings, markers, apertures, subdials, moonphase.", "geometryDescriptor": {"topologyIntent": "cylinder construction for Dial Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "case-bore", "localStart": [0, 0, 0.24], "localEnd": [0, 0, 0.34], "contactType": "socket", "embedDepth": 0.05, "gapTolerance": 0.01}, "dimensions": {"width": 3.4, "height": 3.4, "depth": 0.35, "units": "world (1 unit = 10 mm)", "confidence": 0.95}, "transform": {"position": [0, 0, 0.28], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "dial-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-dial-plate"}}, "material": "mat-dial-plate", "materialLayers": ["mat-dial-plate"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object", "zone-dial-center"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(74, 66, 60, 1)", "secondaryAlbedo": "rgba(110, 98, 89, 1)", "materialClass": "metal", "materialClassConfidence": 0.8, "colorGradient": {"type": "radial", "stops": [{"position": 0.0, "color": "rgba(110, 98, 89, 1)"}, {"position": 0.55, "color": "rgba(74, 66, 60, 1)"}, {"position": 0.8, "color": "rgba(42, 36, 31, 1)"}, {"position": 1.0, "color": "rgba(25, 20, 16, 1)"}]}}};
+  node_dial_assembly_3.userData.actionProfile = {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "dial-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-dial-plate"}};
+  (nodes["root"] ?? root).add(node_dial_assembly_3);
+  nodes["dial-assembly"] = node_dial_assembly_3;
+  const mesh_dial_assembly_3Geometry = endpoint_dial_assembly_3
+    ? new THREE.CylinderGeometry(endpoint_dial_assembly_3.endRadius, endpoint_dial_assembly_3.baseRadius, endpoint_dial_assembly_3.length, 32, 12)
+    : new THREE.CylinderGeometry(0.5, 0.5, 1, 48, 16);
+  if (!endpoint_dial_assembly_3) {
+    mesh_dial_assembly_3Geometry.scale(1.0, 1.0, 1.0);
+  }
+  const mesh_dial_assembly_3 = new THREE.Mesh(
+    mesh_dial_assembly_3Geometry,
+    materialMap["mat-dial-plate"] ?? new THREE.MeshStandardMaterial({ color: 0x888888 })
+  );
+  mesh_dial_assembly_3.name = "Dial Assembly";
+  if (endpoint_dial_assembly_3) {
+    mesh_dial_assembly_3.position.copy(endpoint_dial_assembly_3.midpoint);
+    mesh_dial_assembly_3.quaternion.copy(endpoint_dial_assembly_3.quaternion);
+  }
+  mesh_dial_assembly_3.castShadow = options.castShadow ?? true;
+  mesh_dial_assembly_3.receiveShadow = options.receiveShadow ?? true;
+  mesh_dial_assembly_3.userData.sculptComponent = {"id": "dial-assembly", "name": "Dial Assembly", "level": "macro", "role": "assembly-group", "importance": 1.0, "confidence": 0.95, "primitive": "cylinder", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot for dial plate, rings, markers, apertures, subdials, moonphase.", "geometryDescriptor": {"topologyIntent": "cylinder construction for Dial Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "case-bore", "localStart": [0, 0, 0.24], "localEnd": [0, 0, 0.34], "contactType": "socket", "embedDepth": 0.05, "gapTolerance": 0.01}, "dimensions": {"width": 3.4, "height": 3.4, "depth": 0.35, "units": "world (1 unit = 10 mm)", "confidence": 0.95}, "transform": {"position": [0, 0, 0.28], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "dial-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-dial-plate"}}, "material": "mat-dial-plate", "materialLayers": ["mat-dial-plate"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object", "zone-dial-center"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(74, 66, 60, 1)", "secondaryAlbedo": "rgba(110, 98, 89, 1)", "materialClass": "metal", "materialClassConfidence": 0.8, "colorGradient": {"type": "radial", "stops": [{"position": 0.0, "color": "rgba(110, 98, 89, 1)"}, {"position": 0.55, "color": "rgba(74, 66, 60, 1)"}, {"position": 0.8, "color": "rgba(42, 36, 31, 1)"}, {"position": 1.0, "color": "rgba(25, 20, 16, 1)"}]}}};
+  node_dial_assembly_3.add(mesh_dial_assembly_3);
+  meshes["dial-assembly"] = mesh_dial_assembly_3;
+  colliders["dial-assembly"] = {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"};
+  destructionGroups["dial-assembly"] ??= [];
+  destructionGroups["dial-assembly"].push(node_dial_assembly_3);
+
+  const attachment_hand_assembly_4 = {"parentSocket": "dial-center-pinion", "localStart": [0, 0, 0.34], "localEnd": [0, 0, 0.5], "contactType": "socket", "embedDepth": 0.04, "gapTolerance": 0.01};
+  const endpoint_hand_assembly_4 = makeAttachmentEndpoint(attachment_hand_assembly_4);
+  const node_hand_assembly_4 = new THREE.Group();
+  node_hand_assembly_4.name = "Hand Assembly__pivot";
+  node_hand_assembly_4.scale.set(1, 1, 1);
+  if (endpoint_hand_assembly_4) {
+    node_hand_assembly_4.position.copy(endpoint_hand_assembly_4.start);
+    node_hand_assembly_4.rotation.set(0.0, 0.0, 0.0);
+  } else {
+    node_hand_assembly_4.position.set(0.0, 0.0, 0.4);
+    node_hand_assembly_4.rotation.set(0.0, 0.0, 0.0);
+  }
+  node_hand_assembly_4.userData.sculptComponent = {"id": "hand-assembly", "name": "Hand Assembly", "level": "macro", "role": "assembly-group", "importance": 0.95, "confidence": 0.9, "primitive": "cylinder", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot for the central hand stack and subdial hands around the cannon pinion.", "geometryDescriptor": {"topologyIntent": "cylinder construction for Hand Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "dial-center-pinion", "localStart": [0, 0, 0.34], "localEnd": [0, 0, 0.5], "contactType": "socket", "embedDepth": 0.04, "gapTolerance": 0.01}, "dimensions": {"width": 3.2, "height": 3.2, "depth": 0.25, "units": "world (1 unit = 10 mm)", "confidence": 0.9}, "transform": {"position": [0, 0, 0.4], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "hand-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-hands-polished"}}, "material": "mat-hands-polished", "materialLayers": ["mat-hands-polished"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object", "zone-dial-center"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(237, 238, 240, 1)", "secondaryAlbedo": "rgba(205, 208, 212, 1)", "materialClass": "metal", "materialClassConfidence": 0.95}};
+  node_hand_assembly_4.userData.actionProfile = {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "hand-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-hands-polished"}};
+  (nodes["root"] ?? root).add(node_hand_assembly_4);
+  nodes["hand-assembly"] = node_hand_assembly_4;
+  const mesh_hand_assembly_4Geometry = endpoint_hand_assembly_4
+    ? new THREE.CylinderGeometry(endpoint_hand_assembly_4.endRadius, endpoint_hand_assembly_4.baseRadius, endpoint_hand_assembly_4.length, 32, 12)
+    : new THREE.CylinderGeometry(0.5, 0.5, 1, 48, 16);
+  if (!endpoint_hand_assembly_4) {
+    mesh_hand_assembly_4Geometry.scale(1.0, 1.0, 1.0);
+  }
+  const mesh_hand_assembly_4 = new THREE.Mesh(
+    mesh_hand_assembly_4Geometry,
+    materialMap["mat-hands-polished"] ?? new THREE.MeshStandardMaterial({ color: 0x888888 })
+  );
+  mesh_hand_assembly_4.name = "Hand Assembly";
+  if (endpoint_hand_assembly_4) {
+    mesh_hand_assembly_4.position.copy(endpoint_hand_assembly_4.midpoint);
+    mesh_hand_assembly_4.quaternion.copy(endpoint_hand_assembly_4.quaternion);
+  }
+  mesh_hand_assembly_4.castShadow = options.castShadow ?? true;
+  mesh_hand_assembly_4.receiveShadow = options.receiveShadow ?? true;
+  mesh_hand_assembly_4.userData.sculptComponent = {"id": "hand-assembly", "name": "Hand Assembly", "level": "macro", "role": "assembly-group", "importance": 0.95, "confidence": 0.9, "primitive": "cylinder", "topologyClass": "assembled-solid", "topologyRationale": "Grouping pivot for the central hand stack and subdial hands around the cannon pinion.", "geometryDescriptor": {"topologyIntent": "cylinder construction for Hand Assembly", "edgeTreatment": {"type": "bevel", "bevelRadius": 0.015, "segments": 2}, "deformationStack": [], "uvStrategy": "generated procedural coordinates", "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"}, "parent": "root", "attachment": {"parentSocket": "dial-center-pinion", "localStart": [0, 0, 0.34], "localEnd": [0, 0, 0.5], "contactType": "socket", "embedDepth": 0.04, "gapTolerance": 0.01}, "dimensions": {"width": 3.2, "height": 3.2, "depth": 0.25, "units": "world (1 unit = 10 mm)", "confidence": 0.9}, "transform": {"position": [0, 0, 0.4], "rotation": [0, 0, 0], "scale": [1, 1, 1]}, "actionProfile": {"animationRole": "assembly", "pivot": {"mode": "custom", "localPosition": [0, 0, 0], "axis": [0, 0, 1], "confidence": 0.9}, "transformChannels": {"translate": true, "rotate": true, "scale": false, "bend": false, "twist": false, "detach": false, "visibility": true, "materialState": true}, "sockets": [], "collider": {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"}, "constraints": [], "destruction": {"breakable": false, "fractureGroup": "hand-assembly", "seamRefs": [], "detachableFragments": [], "breakImpulse": 0.0, "debrisMaterial": "mat-hands-polished"}}, "material": "mat-hands-polished", "materialLayers": ["mat-hands-polished"], "deformations": [], "joints": [], "seams": [], "localFeatures": [], "surfaceDetail": {"macroRoughness": 0.2, "microRoughness": 0.08, "bumpAmplitude": 0.0, "normalPattern": "none", "displacementPattern": "none", "occlusionPattern": "crevice AO at seams", "edgeWearPattern": "none", "notes": ""}, "evidenceRefs": ["full-object", "zone-dial-center"], "details": [], "fidelityTier": "blockout", "colorMaterialRecipe": {"dominantAlbedo": "rgba(237, 238, 240, 1)", "secondaryAlbedo": "rgba(205, 208, 212, 1)", "materialClass": "metal", "materialClassConfidence": 0.95}};
+  node_hand_assembly_4.add(mesh_hand_assembly_4);
+  meshes["hand-assembly"] = mesh_hand_assembly_4;
+  colliders["hand-assembly"] = {"type": "box", "offset": [0, 0, 0], "scale": [1, 1, 1], "isTrigger": false, "notes": "simplified proxy for hover picking"};
+  destructionGroups["hand-assembly"] ??= [];
+  destructionGroups["hand-assembly"].push(node_hand_assembly_4);
+
+  root.userData.sculptRuntime = { nodes, meshes, sockets, colliders, destructionGroups } satisfies ProceduralModelRuntime;
+  root.userData.lookDevTargets = {"qualityPriority": "reference-fidelity", "materialPass": {"albedoPaletteRequired": true, "roughnessVariationRequired": true, "normalOrBumpRequired": true, "localOverridesRequired": true, "minimumTextureResolution": 1024, "preferredTextureResolution": 2048, "independentMapChannels": ["albedo", "roughness", "height", "normal", "ambient-occlusion"], "requiredSurfaceFrequencyBands": ["macro", "meso", "micro"], "geometryReliefRequiredWhenSilhouetteAffected": true, "referencePbrExtraction": {"requiredWhenSourceImagePresent": true, "targetThreshold": 0.7, "stopOnLowConfidence": true, "script": "forge/stage1_intake/extract_pbr_evidence.py", "acceptedLimitation": "single-image extraction is reference-derived inference, not exact photogrammetry"}, "mustAvoid": ["single flat albedo per material", "uniform roughness", "albedo texture reused as roughness/height/normal/AO", "single-frequency random noise", "plastic-looking smooth bark, stone, cloth, foliage, or aged material", "local color/detail described only in prose without material masks", "claiming exact PBR recovery when confidence is below the target threshold"]}, "lightingPass": {"requiredTerms": ["key light", "fill light", "rim or environment light", "exposure", "tone mapping", "background", "contact shadow"], "mustAvoid": ["ambient-only lighting", "flat value range", "missing contact shadow", "reference lighting copied without separating material readability"]}, "screenshotReview": ["Compare albedo palette and local color zones.", "Compare roughness/normal/bump response under light.", "Compare cavity dirt, edge wear, stains, moss, scratches, or other local masks.", "Compare key/fill/rim structure, exposure, tone mapping, background, and contact shadows.", "Capture a neutral-light render to verify material readability without reference lighting.", "Capture a grazing-light close-up to expose flat normals, uniform roughness, tiling, and plastic highlights.", "Capture a reference-matched render from the same camera framing as the source."]};
+  root.userData.actionReadiness = {
+    note: 'Use root.userData.sculptRuntime.nodes for transforms, sockets for attachments, colliders for physics proxies, and destructionGroups for breakable sets.',
+  };
+  return root;
+}
+
+export function createPerpetualCalendarChronographLookDevLights(
+  mode: 'neutral' | 'grazing' | 'reference' = 'neutral',
+): THREE.Group {
+  const lights = new THREE.Group();
+  lights.name = "Perpetual Calendar Chronograph look-dev lights";
+  const hemi = new THREE.HemisphereLight(
+    mode === 'reference' ? 0xfff0d6 : 0xf2f4ff,
+    0x363b42,
+    mode === 'grazing' ? 0.28 : mode === 'reference' ? 0.72 : 0.85,
+  );
+  lights.add(hemi);
+  const key = new THREE.DirectionalLight(
+    mode === 'reference' ? 0xffcf8a : 0xfff4e8,
+    mode === 'grazing' ? 4.2 : mode === 'reference' ? 2.6 : 2.15,
+  );
+  if (mode === 'grazing') key.position.set(7.5, 1.1, 4.0);
+  else if (mode === 'reference') key.position.set(-4.5, 7.5, 5.0);
+  else key.position.set(-4.0, 6.0, 5.5);
+  key.castShadow = true;
+  key.shadow.mapSize.set(4096, 4096);
+  key.shadow.bias = -0.00025;
+  key.shadow.normalBias = 0.018;
+  key.shadow.radius = 7;
+  key.shadow.blurSamples = 24;
+  key.shadow.camera.near = 0.5;
+  key.shadow.camera.far = 30;
+  key.shadow.camera.left = -2.6;
+  key.shadow.camera.right = 2.6;
+  key.shadow.camera.top = 2.6;
+  key.shadow.camera.bottom = -2.6;
+  key.shadow.camera.updateProjectionMatrix();
+  lights.add(key);
+  const fill = new THREE.DirectionalLight(0xa8c4ff, mode === 'grazing' ? 0.12 : 0.42);
+  fill.position.set(4.0, 3.0, 3.5);
+  lights.add(fill);
+  const rim = new THREE.DirectionalLight(0xfff1c4, mode === 'grazing' ? 0.28 : 0.85);
+  rim.position.set(0.5, 4.5, -6.0);
+  lights.add(rim);
+  lights.userData.reviewMode = mode;
+  lights.userData.lightingFromPhoto = [{"role": "key", "type": "large soft area", "direction": "upper-left-front (-0.5, 0.6, 0.8)", "color": "#FFFFFF", "intensity": "dominant; creates dial gradient bias and case rim highlight"}, {"role": "fill", "type": "broad frontal soft", "direction": "front (0,0,1)", "color": "#F4F4F6", "intensity": "low; keeps dial text readable"}, {"role": "rim", "type": "narrow strip", "direction": "right (1,0.2,0.2)", "color": "#FFFFFF", "intensity": "subtle; separates case flank from background"}, {"role": "environment", "type": "studio softbox HDR-like gradient", "direction": "all", "color": "#E9EAEC", "intensity": "moderate; drives polished metal curvature read"}, {"role": "background", "type": "white seamless in photo; DARK premium backdrop in experience", "direction": "n/a", "color": "#0B0B0D", "intensity": "experience uses dark radial falloff while matching material response"}, {"role": "grade", "type": "render settings", "direction": "n/a", "color": "n/a", "intensity": "exposure 1.0, ACESFilmic tone mapping, physically correct lights; soft contact shadow under case via shadow-catcher plane + ambient occlusion in recesses"}];
+  lights.userData.lookDevTargets = {"qualityPriority": "reference-fidelity", "materialPass": {"albedoPaletteRequired": true, "roughnessVariationRequired": true, "normalOrBumpRequired": true, "localOverridesRequired": true, "minimumTextureResolution": 1024, "preferredTextureResolution": 2048, "independentMapChannels": ["albedo", "roughness", "height", "normal", "ambient-occlusion"], "requiredSurfaceFrequencyBands": ["macro", "meso", "micro"], "geometryReliefRequiredWhenSilhouetteAffected": true, "referencePbrExtraction": {"requiredWhenSourceImagePresent": true, "targetThreshold": 0.7, "stopOnLowConfidence": true, "script": "forge/stage1_intake/extract_pbr_evidence.py", "acceptedLimitation": "single-image extraction is reference-derived inference, not exact photogrammetry"}, "mustAvoid": ["single flat albedo per material", "uniform roughness", "albedo texture reused as roughness/height/normal/AO", "single-frequency random noise", "plastic-looking smooth bark, stone, cloth, foliage, or aged material", "local color/detail described only in prose without material masks", "claiming exact PBR recovery when confidence is below the target threshold"]}, "lightingPass": {"requiredTerms": ["key light", "fill light", "rim or environment light", "exposure", "tone mapping", "background", "contact shadow"], "mustAvoid": ["ambient-only lighting", "flat value range", "missing contact shadow", "reference lighting copied without separating material readability"]}, "screenshotReview": ["Compare albedo palette and local color zones.", "Compare roughness/normal/bump response under light.", "Compare cavity dirt, edge wear, stains, moss, scratches, or other local masks.", "Compare key/fill/rim structure, exposure, tone mapping, background, and contact shadows.", "Capture a neutral-light render to verify material readability without reference lighting.", "Capture a grazing-light close-up to expose flat normals, uniform roughness, tiling, and plastic highlights.", "Capture a reference-matched render from the same camera framing as the source."]};
+  return lights;
+}
+
+// PBR materials (clearcoat/iridescence/transmission/anisotropy) need an environment
+// map to visually behave as intended — call this once per renderer and assign the
+// result to scene.environment before rendering. No external HDR asset required.
+export function createPerpetualCalendarChronographEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const texture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+  return texture;
+}
+
+// Plan 1.3 §3.2 — auto-framing by bounding box. The Divine Eye can only compare a
+// render to the reference if the object is FRAMED consistently (an object framed
+// differently scores as wrong even when its shape is right). This positions the camera
+// deterministically from the object's bounding box so it fills the frame at a stable
+// margin, and sets near/far to the object scale. Call after adding the model to the
+// scene, and again on resize (after updating camera.aspect).
+export function framePerpetualCalendarChronographCamera(
+  camera: THREE.PerspectiveCamera,
+  object: THREE.Object3D,
+  options: { margin?: number; azimuthDeg?: number; elevationDeg?: number } = {},
+): void {
+  const box = new THREE.Box3().setFromObject(object);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const margin = options.margin ?? 1.15;
+  const maxDim = Math.max(size.x, size.y, size.z) * margin;
+  const fov = (camera.fov * Math.PI) / 180;
+  // distance so the largest object dimension fits vertically in the frame
+  const distance = (maxDim / 2) / Math.tan(fov / 2);
+  const az = ((options.azimuthDeg ?? 0) * Math.PI) / 180;
+  const el = ((options.elevationDeg ?? 0) * Math.PI) / 180;
+  const dir = new THREE.Vector3(
+    Math.sin(az) * Math.cos(el),
+    Math.sin(el),
+    Math.cos(az) * Math.cos(el),
+  );
+  camera.position.copy(center).addScaledVector(dir, distance);
+  camera.near = Math.max(0.01, distance - maxDim);
+  camera.far = distance + maxDim * 2;
+  camera.lookAt(center);
+  camera.updateProjectionMatrix();
+}
+
+// Plan 1.3 §3.2c — PRESENTATION composer (DOF + bloom). CRITICAL (R-POSTFX): this is
+// for the showcase/hero render ONLY. The Divine Eye's EVALUATION render MUST use a
+// plain renderer with NO composer — bloom blows highlights and DOF blurs edges, which
+// would corrupt the deterministic IoU/DCD/edge/blowout signals. Enable dof/bloom ONLY
+// when the reference photo actually exhibits them (detect_reference_effects.py authorizes).
+export function createPerpetualCalendarChronographPresentationComposer(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  camera: THREE.Camera,
+  options: { dof?: boolean; bloom?: boolean; bloomStrength?: number; dofFocus?: number; dofAperture?: number } = {},
+): EffectComposer {
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  if (options.dof) {
+    composer.addPass(new BokehPass(scene, camera, {
+      focus: options.dofFocus ?? 10.0,
+      aperture: options.dofAperture ?? 0.0002,
+      maxblur: 0.01,
+    }));
+  }
+  if (options.bloom) {
+    const size = new THREE.Vector2();
+    renderer.getSize(size);
+    composer.addPass(new UnrealBloomPass(size, options.bloomStrength ?? 0.4, 0.4, 0.85));
+  }
+  return composer;
+}
+
+export function configurePerpetualCalendarChronographRenderer(renderer: THREE.WebGLRenderer): void {
+  // Load-bearing for view-dependent finishes (anodized / Doppler): without ACES + sRGB
+  // the environment reflection reads flat/washed instead of a believable metal response.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+}
+
+export function createPerpetualCalendarChronographInspectControls(
+  camera: THREE.Camera,
+  domElement: HTMLElement,
+): OrbitControls {
+  // View-dependent finishes only read correctly once the user orbits — their color
+  // comes from the environment reflection, not albedo, so free rotation matters here.
+  const controls = new OrbitControls(camera, domElement);
+  controls.enableDamping = true;
+  controls.minDistance = 1.0;
+  controls.maxDistance = 8.0;
+  controls.autoRotate = false;
+  return controls;
+}

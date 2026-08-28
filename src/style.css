@@ -1,0 +1,169 @@
+/* Grande Complication — cinematic scroll experience */
+:root {
+  --bg: #0b0b0d;
+  --ink: #eceae6;
+  --ink-dim: #97938c;
+  --hair: rgba(236, 234, 230, 0.16);
+  --accent: #cbb68a;
+  --serif: Georgia, 'Times New Roman', serif;
+  --sans: 'Arial Narrow', 'Helvetica Neue', Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: auto; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font-family: var(--sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+/* ---------- fixed 3D stage ---------- */
+#stage {
+  position: fixed; inset: 0; z-index: 0;
+}
+#stage canvas { display: block; }
+
+/* ---------- UI chrome ---------- */
+.ui { position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+
+.ui-top {
+  position: absolute; top: 28px; left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center;
+}
+.brand {
+  font-family: var(--serif);
+  font-size: 15px; letter-spacing: 0.55em; text-indent: 0.55em;
+  color: var(--ink);
+}
+.brand-sub {
+  font-size: 9px; letter-spacing: 0.4em; text-indent: 0.4em;
+  color: var(--ink-dim);
+}
+
+.chapters {
+  position: absolute; right: 34px; top: 50%; transform: translateY(-50%);
+}
+.chapters ol { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.chapters li {
+  font-size: 10px; letter-spacing: 0.2em; color: var(--ink-dim);
+  opacity: 0.45; transition: opacity 0.4s, color 0.4s, transform 0.4s;
+  transform: translateX(6px);
+  text-align: right;
+}
+.chapters li span { color: var(--accent); margin-right: 8px; font-size: 9px; }
+.chapters li.active { opacity: 1; color: var(--ink); transform: translateX(0); }
+
+.progress {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  width: min(340px, 42vw); height: 1px; background: var(--hair);
+}
+#progress-fill {
+  display: block; width: 100%; height: 100%;
+  background: linear-gradient(90deg, var(--accent), #efe9dc);
+  transform-origin: left center; transform: scaleX(0);
+}
+
+.hint {
+  position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%);
+  font-size: 9px; letter-spacing: 0.5em; text-indent: 0.5em; color: var(--ink-dim);
+  animation: hintPulse 2.6s ease-in-out infinite;
+}
+@keyframes hintPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+
+/* ---------- scroll structure ---------- */
+main { position: relative; z-index: 1; }
+.hero { height: 100vh; }
+#story { height: 100vh; position: relative; }
+
+/* story copy — one block, retargeted per chapter */
+.copy {
+  position: absolute; z-index: 2;
+  left: clamp(28px, 6vw, 110px); top: 50%;
+  transform: translateY(-50%);
+  max-width: min(400px, 30vw);
+  pointer-events: none;
+  padding: 26px 30px 26px 0;
+  border-radius: 8px;
+}
+.copy::before {
+  content: '';
+  position: absolute; inset: -40px -60px -40px -80px;
+  background: radial-gradient(closest-side, rgba(11, 11, 13, 0.82), rgba(11, 11, 13, 0));
+  z-index: -1;
+}
+.copy .eyebrow, .outro .eyebrow {
+  font-size: 10px; letter-spacing: 0.5em; color: var(--accent);
+  margin-bottom: 22px;
+}
+.copy h2, .outro h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(30px, 3.6vw, 54px);
+  line-height: 1.08;
+  letter-spacing: 0.01em;
+  margin-bottom: 22px;
+  color: var(--ink);
+}
+.copy .desc, .outro .desc {
+  font-size: 13px; line-height: 1.75; letter-spacing: 0.06em;
+  color: var(--ink-dim);
+  max-width: 34ch;
+}
+
+/* component labels */
+#labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.lbl {
+  position: absolute; transform: translate(-50%, -50%);
+  opacity: 0;
+  font-size: 10px; letter-spacing: 0.3em; color: var(--ink);
+  white-space: nowrap;
+}
+.lbl::before {
+  content: '';
+  position: absolute; left: 50%; top: 100%;
+  width: 1px; height: 34px;
+  background: linear-gradient(180deg, var(--hair), transparent);
+}
+.lbl i {
+  display: block; font-style: normal;
+  font-size: 9px; letter-spacing: 0.16em; color: var(--ink-dim);
+  margin-top: 5px;
+}
+
+.outro {
+  min-height: 100vh;
+  display: grid; place-items: center;
+  text-align: center;
+  position: relative; z-index: 2;
+}
+.outro-copy { opacity: 0; transform: translateY(30px); }
+
+/* ---------- responsive ---------- */
+/* portrait-ish viewports: the watch fills the width — stack copy at the bottom */
+@media (max-width: 900px), (max-aspect-ratio: 21/20) {
+  .copy {
+    left: 50%; top: auto; bottom: 8vh;
+    transform: translateX(-50%);
+    max-width: 84vw; text-align: center;
+    padding: 18px 8px;
+  }
+  .copy::before { inset: -20px -30px; }
+  .copy h2 { font-size: clamp(26px, 6vw, 40px); margin-bottom: 14px; }
+  .copy .eyebrow { margin-bottom: 12px; }
+  .copy .desc { margin-inline: auto; max-width: 46ch; }
+  .chapters { right: 14px; }
+  .chapters li { font-size: 8px; letter-spacing: 0.14em; }
+  .brand { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint { animation: none; opacity: 0.5; }
+}

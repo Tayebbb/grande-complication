@@ -1,0 +1,50 @@
+[
+  {
+    "id": "case-bezel-crystal-profile",
+    "tier": "critical",
+    "score": 0.84,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "Lathe case convex flank + concave bezel slope + domed crystal all read from front/3q/side; crystal edge catches highlight like reference. Case band highlight behavior matches."
+  },
+  {
+    "id": "dial-complication-layout",
+    "tier": "critical",
+    "score": 0.83,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "All complication placements verified against sheet; aperture frames beveled; subdial wells with polished lips; moon disc sized to date zone."
+  },
+  {
+    "id": "hands-system",
+    "tier": "critical",
+    "score": 0.82,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "Leaf hands with real two-facet ridge (highlight flips across spine), hour/minute at 10:09 as reference; chrono needle w/ tail+counterweight; subdial hand angles corrected to reference directions this pass."
+  },
+  {
+    "id": "strap-weave-system",
+    "tier": "critical",
+    "score": 0.78,
+    "minimumScore": 0.75,
+    "passed": true,
+    "notes": "Chevron braid as real displaced geometry (silhouette ripple at edges), rounded visible ends, lower tail flare; rope stitches in edge runs (8 upper / 12 lower). Braid albedo/normal detail lands at material pass."
+  },
+  {
+    "id": "crown-pusher-architecture",
+    "tier": "important",
+    "score": 0.74,
+    "minimumScore": 0.65,
+    "passed": true,
+    "notes": "20-flute crown + medallion + collar reads clearly; pushers at measured 21 deg with brushed caps; slightly thinner than reference blocks (acceptable)."
+  },
+  {
+    "id": "marker-ring-fidelity",
+    "tier": "important",
+    "score": 0.75,
+    "minimumScore": 0.65,
+    "passed": true,
+    "notes": "Faceted ridge batons, double at 12, r1.38 ring; catch light like applied indexes."
+  }
+]

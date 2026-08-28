@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grande Complication — A Cinematic Deconstruction</title>
+    <meta
+      name="description"
+      content="A perpetual calendar chronograph, procedurally reconstructed in Three.js and revealed layer by layer through a cinematic scroll story."
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage" aria-hidden="true"></div>
+
+    <div class="ui">
+      <header class="ui-top">
+        <span class="brand">CHRONOGRAPHE</span>
+        <span class="brand-sub">GRANDE COMPLICATION — PROCEDURAL STUDY</span>
+      </header>
+
+      <nav class="chapters" aria-label="Story chapters">
+        <ol id="chapter-list">
+          <li data-ch="0"><span>01</span> THE OBJECT</li>
+          <li data-ch="1"><span>02</span> THE CASE</li>
+          <li data-ch="2"><span>03</span> THE DIAL</li>
+          <li data-ch="3"><span>04</span> INDICATION</li>
+          <li data-ch="4"><span>05</span> CONTROL</li>
+          <li data-ch="5"><span>06</span> ARCHITECTURE</li>
+          <li data-ch="6"><span>07</span> THE ASSEMBLY</li>
+        </ol>
+      </nav>
+
+      <div class="progress" role="progressbar" aria-label="Story progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="progress-fill"></span></div>
+      <div class="hint" id="scroll-hint" aria-hidden="true">SCROLL TO EXPLORE</div>
+      <div id="chapter-live" class="visually-hidden" aria-live="polite"></div>
+    </div>
+
+    <main>
+      <section class="hero" aria-label="Introduction">
+        <h1 class="visually-hidden">Grande Complication — a cinematic deconstruction of a perpetual calendar chronograph</h1>
+      </section>
+
+      <section id="story" aria-label="The construction story">
+        <div class="copy" id="copy"></div>
+        <div id="labels" aria-hidden="true"></div>
+      </section>
+
+      <section class="outro" aria-label="Reassembly">
+        <div class="outro-copy">
+          <p class="eyebrow">EPILOGUE</p>
+          <h2>TIME, REASSEMBLED.</h2>
+          <p class="desc">Every layer returns to its place. Precision is the whole.</p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

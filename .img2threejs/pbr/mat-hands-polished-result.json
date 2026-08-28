@@ -1,0 +1,86 @@
+﻿{
+  "ok": true,
+  "verdict": "pass",
+  "confidence": 0.831,
+  "estimatedFidelity": 0.831,
+  "targetThreshold": 0.7,
+  "materialId": "mat-hands-polished",
+  "sourceImage": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-hands-polished.png",
+  "outDir": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished",
+  "palette": [
+    "#302623",
+    "#352B28",
+    "#3B312F",
+    "#251B19",
+    "#443A37"
+  ],
+  "maps": {
+    "albedo": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_albedo.png",
+      "url": "mat-hands-polished_albedo.png",
+      "channel": "albedo",
+      "source": "reference-pixel-extraction"
+    },
+    "roughness": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_roughness.png",
+      "url": "mat-hands-polished_roughness.png",
+      "channel": "roughness",
+      "source": "reference-pixel-extraction"
+    },
+    "height": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_height.png",
+      "url": "mat-hands-polished_height.png",
+      "channel": "height",
+      "source": "reference-pixel-extraction"
+    },
+    "normal": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_normal.png",
+      "url": "mat-hands-polished_normal.png",
+      "channel": "normal",
+      "source": "reference-pixel-extraction"
+    },
+    "ao": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-hands-polished\\mat-hands-polished_ao.png",
+      "url": "mat-hands-polished_ao.png",
+      "channel": "ao",
+      "source": "reference-pixel-extraction"
+    }
+  },
+  "diagnostics": {
+    "sourceWidth": 192,
+    "sourceHeight": 215,
+    "mapSize": 1024,
+    "cropBBoxPixels": {
+      "x": 0,
+      "y": 0,
+      "width": 192,
+      "height": 215
+    },
+    "mask": {
+      "backgroundColor": "#C8C1BB",
+      "backgroundNoise": 247.115,
+      "transparentPixelFraction": 0.0,
+      "foregroundCoverage": 0.4445
+    },
+    "mapStats": {
+      "valueRange": 0.1176,
+      "heightP90Gradient": 0.05595,
+      "roughnessBase": 0.69,
+      "roughnessVariation": 0.096,
+      "normalStrength": 0.222,
+      "blurRadius": 21
+    },
+    "palette": [
+      "#302623",
+      "#352B28",
+      "#3B312F",
+      "#251B19",
+      "#443A37"
+    ]
+  },
+  "warnings": [
+    "single-image inverse rendering cannot prove true physical PBR; confidence is capped",
+    "low value range weakens height/roughness inference"
+  ],
+  "limitation": "single-image PBR extraction is an estimate; 70%+ extraction confidence still needs render screenshot review"
+}

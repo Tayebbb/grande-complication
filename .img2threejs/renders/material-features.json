@@ -1,0 +1,34 @@
+[
+  {
+    "id": "metal-dial-material-split",
+    "tier": "critical",
+    "score": 0.8,
+    "minimumScore": 0.75,
+    "passed": true,
+    "notes": "Polished platinum (env-driven curvature read) clearly separates from satin sunburst dial (radial gradient + low env response). Brushed pusher caps + movement plate distinct from mirror polish. Roughness map splits print vs lacquer on dial."
+  },
+  {
+    "id": "dial-complication-layout",
+    "tier": "critical",
+    "score": 0.8,
+    "minimumScore": 0.8,
+    "passed": true,
+    "notes": "All print systems present and placed: tachymeter band w/ true tachymetric numeral angles + BASE 1000 + SWISS MADE, railway track, boxed 5-min numerals, subdial scales w/ azurage, date arc 1-31 starting ~1:00, SAT|MAR discs, leap '3', brand text. Fonts are stand-ins (documented approximation)."
+  },
+  {
+    "id": "strap-weave-system",
+    "tier": "critical",
+    "score": 0.76,
+    "minimumScore": 0.75,
+    "passed": true,
+    "notes": "Chevron braid albedo+normal+roughness from height field; geometry ripple at edges; rope stitches. Braid scale slightly coarser than reference weave (documented)."
+  },
+  {
+    "id": "moonphase-date-zone",
+    "tier": "important",
+    "score": 0.72,
+    "minimumScore": 0.65,
+    "passed": true,
+    "notes": "Navy-black grounded in measured palette #1E1A29; gold textured stars + crater moon; date arc wraps zone. Moon position within window approximated from single view."
+  }
+]

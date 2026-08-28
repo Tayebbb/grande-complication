@@ -1,0 +1,85 @@
+﻿{
+  "ok": true,
+  "verdict": "pass",
+  "confidence": 0.86,
+  "estimatedFidelity": 0.86,
+  "targetThreshold": 0.7,
+  "materialId": "mat-dial-plate",
+  "sourceImage": "E:\\scroll-animation-test\\.img2threejs\\material-crops\\mat-dial-plate.png",
+  "outDir": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate",
+  "palette": [
+    "#372E2A",
+    "#423733",
+    "#F1E8E3",
+    "#251C17",
+    "#5E524D"
+  ],
+  "maps": {
+    "albedo": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_albedo.png",
+      "url": "mat-dial-plate_albedo.png",
+      "channel": "albedo",
+      "source": "reference-pixel-extraction"
+    },
+    "roughness": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_roughness.png",
+      "url": "mat-dial-plate_roughness.png",
+      "channel": "roughness",
+      "source": "reference-pixel-extraction"
+    },
+    "height": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_height.png",
+      "url": "mat-dial-plate_height.png",
+      "channel": "height",
+      "source": "reference-pixel-extraction"
+    },
+    "normal": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_normal.png",
+      "url": "mat-dial-plate_normal.png",
+      "channel": "normal",
+      "source": "reference-pixel-extraction"
+    },
+    "ao": {
+      "path": "E:\\scroll-animation-test\\.img2threejs\\pbr\\mat-dial-plate\\mat-dial-plate_ao.png",
+      "url": "mat-dial-plate_ao.png",
+      "channel": "ao",
+      "source": "reference-pixel-extraction"
+    }
+  },
+  "diagnostics": {
+    "sourceWidth": 269,
+    "sourceHeight": 323,
+    "mapSize": 1024,
+    "cropBBoxPixels": {
+      "x": 0,
+      "y": 0,
+      "width": 269,
+      "height": 323
+    },
+    "mask": {
+      "backgroundColor": "#423832",
+      "backgroundNoise": 103.436,
+      "transparentPixelFraction": 0.0,
+      "foregroundCoverage": 0.6939
+    },
+    "mapStats": {
+      "valueRange": 0.8471,
+      "heightP90Gradient": 0.0543,
+      "roughnessBase": 0.699,
+      "roughnessVariation": 0.105,
+      "normalStrength": 0.22,
+      "blurRadius": 21
+    },
+    "palette": [
+      "#372E2A",
+      "#423733",
+      "#F1E8E3",
+      "#251C17",
+      "#5E524D"
+    ]
+  },
+  "warnings": [
+    "single-image inverse rendering cannot prove true physical PBR; confidence is capped"
+  ],
+  "limitation": "single-image PBR extraction is an estimate; 70%+ extraction confidence still needs render screenshot review"
+}
