@@ -275,14 +275,25 @@ export const DOSSIER: DossierStop[] = [
   },
 ];
 
-/** Dossier camera keys: q in 0..1 across the tour pin. Entry/exit match the
-    story's final corridor framing so both transitions are seamless. */
+/** Dossier camera keys: q in 0..1 across the tour pin. Entry matches the
+    story's final corridor key; the tail watches the watch reassemble and
+    settles on the closing beauty angle of the complete piece. */
 export const DOSSIER_KEYS: CameraKey[] = [
   { p: 0.0, az: 55, el: 14, dist: 26.5, target: [0.55, -0.55, 1.8] },
   ...DOSSIER.map((s, i) => ({
-    p: (i + 0.72) / (DOSSIER.length + 1),
+    p: (i + 0.72) / (DOSSIER.length + 2),
     az: s.az, el: s.el, dist: s.dist,
     target: s.anchor as [number, number, number],
   })),
-  { p: 1.0, az: 55, el: 14, dist: 26.5, target: [0.55, -0.55, 1.8] },
+  // pull back to watch every component fly home
+  { p: 0.9, az: 38, el: 10, dist: 13.5, target: [0.2, 0, 2.8] },
+  // the closing hero: complete watch, classic three-quarter beauty angle
+  { p: 1.0, az: 26, el: 11, dist: 8.6, target: [0, 0.05, 2.8] },
 ];
+
+/** Reassembly ramp inside the dossier act: 0 = fully exploded, 1 = complete.
+    Zero-slope at both ends so entering/leaving the beauty shot is gentle. */
+export function reassemblyFromTour(q: number): number {
+  const t = Math.min(1, Math.max(0, (q - 0.84) / (0.985 - 0.84)));
+  return t * t * (3 - 2 * t);
+}

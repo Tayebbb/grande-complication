@@ -228,6 +228,26 @@ main { position: relative; z-index: 1; }
   .brand { font-size: 12px; }
 }
 
+/* phones: strip chrome to the essentials so the product owns the screen */
+@media (max-width: 640px) {
+  .chapters { display: none; }
+  .ui-top { top: 16px; }
+  .brand { font-size: 11px; letter-spacing: 0.4em; text-indent: 0.4em; }
+  .brand-sub { font-size: 8px; }
+  .copy { bottom: 5vh; max-width: 92vw; }
+  .copy h2 { font-size: clamp(21px, 7vw, 30px); }
+  .copy .desc { font-size: 12px; }
+  .lbl { font-size: 9px; }
+  .lbl i { font-size: 8px; }
+  .dossier-panel {
+    bottom: 3vh; width: 92vw; padding: 14px 16px 10px;
+    max-height: 44vh; overflow-y: auto;
+  }
+  .dossier-panel h3 { font-size: 19px; margin-top: 10px; }
+  .dossier-panel .d-body { font-size: 11px; line-height: 1.55; margin-top: 8px; }
+  .dossier-ring { width: 64px; height: 64px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hint { animation: none; opacity: 0.5; }
 }

@@ -17,7 +17,7 @@ import {
   setExplosionProgress,
   type ProceduralModelRuntime,
 } from './createObjectModel';
-import { STORY, CAMERA_KEYS, DOSSIER, DOSSIER_KEYS, explosionFromStory, rigPoseFromStory, RIG, type StoryStage, type CameraKey } from './story';
+import { STORY, CAMERA_KEYS, DOSSIER, DOSSIER_KEYS, explosionFromStory, reassemblyFromTour, rigPoseFromStory, RIG, type StoryStage, type CameraKey } from './story';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -48,6 +48,16 @@ scene.background = new THREE.Color(0x0b0b0d);
 scene.environment = createPerpetualCalendarChronographEnvironment(renderer);
 
 const camera = new THREE.PerspectiveCamera(32, window.innerWidth / window.innerHeight, 0.1, 80);
+
+// portrait compensation: vertical FOV crops hard on phones — widen by pulling
+// the whole camera path back so the full product stays framed on any aspect
+const REF_ASPECT = 1.5;
+let distScale = 1;
+function updateDistScale() {
+  const aspect = window.innerWidth / window.innerHeight;
+  distScale = aspect >= REF_ASPECT ? 1 : Math.pow(Math.min(REF_ASPECT / aspect, 2.8), 0.62);
+}
+updateDistScale();
 
 /* ---- premium dark-studio lighting (lighting-pass rig) ---- */
 // The studio rig is dimmed while the watch rests under the spotlight and
@@ -246,13 +256,13 @@ const spotFocus = new THREE.Vector3();
 /** Continuous, scrub-deterministic focus field over the dossier tour. */
 function applySpotIsolation(q: number) {
   const n = DOSSIER.length;
-  const halfW = 1 / (n + 1);
+  const halfW = 1 / (n + 2);
   let globalDim = 0;
   focusScratch.clear();
   spotFocus.set(0, 0, 0);
   let wSum = 0;
   for (let i = 0; i < n; i++) {
-    const c = (i + 0.72) / (n + 1);
+    const c = (i + 0.72) / (n + 2);
     const w = Math.max(0, 1 - Math.abs(q - c) / halfW); // triangular falloff per stop
     if (w <= 0) continue;
     globalDim = Math.max(globalDim, w);
@@ -341,7 +351,7 @@ function cameraAt(
   while (i < cam.knots.length - 2 && clamped > cam.knots[i + 1]) i++;
   const az = THREE.MathUtils.degToRad(hermiteChannel(cam.knots, cam.channels[0], i, clamped));
   const el = THREE.MathUtils.degToRad(hermiteChannel(cam.knots, cam.channels[1], i, clamped));
-  const dist = hermiteChannel(cam.knots, cam.channels[2], i, clamped);
+  const dist = hermiteChannel(cam.knots, cam.channels[2], i, clamped) * distScale;
   outTarget.set(
     hermiteChannel(cam.knots, cam.channels[3], i, clamped),
     hermiteChannel(cam.knots, cam.channels[4], i, clamped),
@@ -364,8 +374,10 @@ function applyState() {
   // hero entrance fade
   stage.style.opacity = state.heroIn.toFixed(3);
 
-  // explosion — one master value (spec runtimeExplosion staggering inside)
-  const explodeT = explosionFromStory(p);
+  // explosion — one master value (spec runtimeExplosion staggering inside);
+  // the dossier tail rewinds it so the journey closes on the complete watch
+  let explodeT = explosionFromStory(p);
+  if (state.tour > 0) explodeT *= 1 - reassemblyFromTour(state.tour);
   setExplosionProgress(watch, explodeT);
   // mechanism pose is a pure function of progress — scrub-locked, inherently reversible
   if (!reducedMotion) spinFn()?.(explodeT * 9);
@@ -584,7 +596,7 @@ function renderDossierStop(i: number) {
 
 function updateDossier(q: number) {
   const n = DOSSIER.length;
-  const raw = Math.round(q * (n + 1) - 0.72);
+  const raw = Math.round(q * (n + 2) - 0.72);
   const idx = q > 0.001 && raw >= 0 && raw < n ? raw : -1;
   if (idx !== dossierIdx) {
     dossierIdx = idx;
@@ -681,7 +693,7 @@ const ctx = gsap.context(() => {
   ScrollTrigger.create({
     trigger: '#dossier',
     start: 'top top',
-    end: '+=8200',
+    end: '+=9600',
     pin: true,
     scrub: reducedMotion ? true : 1,
     onUpdate(self) {
@@ -718,6 +730,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  updateDistScale();
 });
 
 const clock = new THREE.Clock();
@@ -736,6 +749,14 @@ window.__setStory = (p: number, r = 0) => {
   state.reassembly = r;
   setStage(stageIndexFor(p));
   progressFill.style.transform = `scaleX(${p.toFixed(4)})`;
+};
+(window as unknown as Record<string, unknown>).__setTour = (q: number) => {
+  state.tour = q;
+};
+(window as unknown as Record<string, unknown>).__frame = () => {
+  applyState();
+  updateLabels(1);
+  renderer.render(scene, camera);
 };
 (window as unknown as Record<string, unknown>).__model = watch;
 (window as unknown as Record<string, unknown>).__scene = scene;
