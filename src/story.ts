@@ -88,9 +88,9 @@ export const STORY: StoryStage[] = [
     focus: 'assembly',
     labels: [
       { component: 'movement-plate', text: 'MOVEMENT', sub: 'MECHANICAL CALIBRE', offset: [-1.7, -0.6, 0], minSeparation: 0.2 },
+      { component: 'calendar-works', text: 'CALENDAR WORKS', sub: 'PERPETUAL MODULE', offset: [-1.35, 0.9, 0.3], minSeparation: 0.15 },
       { component: 'case-back', text: 'CASE BACK', sub: 'SCREW-DOWN', offset: [1.5, -1.0, -0.3], minSeparation: 0.3 },
       { component: 'gear-train', text: 'GEAR TRAIN', sub: 'CUT TEETH', offset: [1.6, 0.75, 0.2], minSeparation: 0.12 },
-      { component: 'date-subdial', text: 'DATE RING', sub: 'PERPETUAL ARC', offset: [-1.5, -1.1, 0.4], minSeparation: 0.2 },
     ],
   },
   {
@@ -101,7 +101,7 @@ export const STORY: StoryStage[] = [
     focus: 'whole',
     labels: [
       { component: 'crystal', text: 'CRYSTAL', offset: [0.9, 1.0, 0.5], minSeparation: 0.4 },
-      { component: 'dial-plate', text: 'DIAL', offset: [-1.5, 0.4, 0.4], minSeparation: 0.2 },
+      { component: 'chrono-works', text: 'COLUMN WHEEL', sub: 'CHRONOGRAPH COMMAND', offset: [1.2, 1.05, 0.3], minSeparation: 0.15 },
       { component: 'balance-wheel', text: 'BALANCE', sub: 'OSCILLATOR', offset: [-1.3, -1.15, 0.3], minSeparation: 0.15 },
       { component: 'mainspring-barrel', text: 'BARREL', sub: 'MAINSPRING', offset: [1.55, -0.35, 0.2], minSeparation: 0.1 },
       { component: 'strap-upper', text: 'STRAP', sub: 'BRAIDED CALFSKIN', offset: [-1.4, 1.2, 0.2], minSeparation: 0.3 },
@@ -121,12 +121,12 @@ export interface CameraKey {
 export const CAMERA_KEYS: CameraKey[] = [
   { p: 0.0, az: 0, el: 5, dist: 12.4, target: [0, -0.1, 0.2] },
   { p: 0.15, az: -5, el: 5, dist: 11.0, target: [0, 0, 0.3] },
-  { p: 0.3, az: -19, el: 11, dist: 9.8, target: [0, 0.15, 0.5] },
-  { p: 0.5, az: -7, el: 3, dist: 9.6, target: [0, 0.1, 0.8] },
+  { p: 0.3, az: -11, el: 11, dist: 9.8, target: [0, 0.15, 0.5] },
+  { p: 0.5, az: -2, el: 3, dist: 9.6, target: [0, 0.1, 0.8] },
   { p: 0.65, az: 38, el: 7, dist: 10.2, target: [0.6, 0, 0.6] },
   { p: 0.78, az: 21, el: 12, dist: 13.6, target: [0.3, -0.3, 0.7] },
-  { p: 0.92, az: 25, el: 11, dist: 20.5, target: [0.5, -0.6, 0.5] },
-  { p: 1.0, az: 30, el: 8, dist: 24.0, target: [0.6, -0.75, 0.4] },
+  { p: 0.92, az: 38, el: 13, dist: 22.0, target: [0.5, -0.55, -0.2] },
+  { p: 1.0, az: 55, el: 14, dist: 26.0, target: [0.55, -0.55, -0.5] },
 ];
 
 /** Explosion master ramp: assembled until 0.16, fully exploded by 0.96. */

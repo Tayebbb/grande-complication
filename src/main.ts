@@ -457,6 +457,8 @@ window.__setStory = (p: number, r = 0) => {
   setStage(stageIndexFor(p));
   progressFill.style.transform = `scaleX(${p.toFixed(4)})`;
 };
+(window as unknown as Record<string, unknown>).__model = watch;
+(window as unknown as Record<string, unknown>).__scene = scene;
 
 let fpsAccum = 0;
 let fpsFrames = 0;

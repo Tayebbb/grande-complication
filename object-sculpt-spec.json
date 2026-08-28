@@ -3246,6 +3246,151 @@
       }
     },
     {
+      "id": "chrono-works",
+      "name": "Chronograph Works (column wheel + levers)",
+      "level": "micro",
+      "role": "calibre-part",
+      "importance": 0.7,
+      "confidence": 0.4,
+      "primitive": "extrude",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Blue-steel 16-post column wheel, S-shaped operating levers from pusher interiors, brake hammer, clutch bridge; convention-derived chronograph command layer.",
+      "geometryDescriptor": {
+        "topologyIntent": "column wheel r0.16 with 8 posts + ratchet base, 2 Shape-extruded levers, L hammer, clutch bridge (src/model/movement.ts chrono group)",
+        "edgeTreatment": {
+          "type": "bevel",
+          "bevelRadius": 0.015,
+          "segments": 2
+        },
+        "deformationStack": [],
+        "uvStrategy": "generated procedural coordinates",
+        "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"
+      },
+      "parent": "movement-plate",
+      "attachment": {
+        "parentSocket": "movement-plate-face",
+        "localStart": [
+          0.55,
+          0.35,
+          -0.3
+        ],
+        "localEnd": [
+          0.55,
+          0.35,
+          -0.1
+        ],
+        "contactType": "socket",
+        "embedDepth": 0.03,
+        "gapTolerance": 0.01
+      },
+      "dimensions": {
+        "width": 1.4,
+        "height": 1.2,
+        "depth": 0.2,
+        "units": "world (1 unit = 10 mm)",
+        "confidence": 0.4
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "rotating-part",
+        "pivot": {
+          "mode": "custom",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        },
+        "transformChannels": {
+          "translate": true,
+          "rotate": true,
+          "scale": false,
+          "bend": false,
+          "twist": false,
+          "detach": true,
+          "visibility": true,
+          "materialState": true
+        },
+        "sockets": [],
+        "collider": {
+          "type": "cylinder",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "isTrigger": false,
+          "notes": "simplified proxy for hover picking"
+        },
+        "constraints": [],
+        "destruction": {
+          "breakable": false,
+          "fractureGroup": "chrono-works",
+          "seamRefs": [],
+          "detachableFragments": [],
+          "breakImpulse": 0.0,
+          "debrisMaterial": "mat-case-brushed"
+        }
+      },
+      "material": "mat-case-polished",
+      "materialLayers": [
+        "mat-case-polished",
+        "mat-case-polished"
+      ],
+      "deformations": [],
+      "joints": [],
+      "seams": [],
+      "localFeatures": [],
+      "surfaceDetail": {
+        "macroRoughness": 0.4,
+        "microRoughness": 0.2,
+        "bumpAmplitude": 0.01,
+        "normalPattern": "circular brushing",
+        "displacementPattern": "none",
+        "occlusionPattern": "ring grooves",
+        "edgeWearPattern": "none",
+        "notes": "inferred layer"
+      },
+      "evidenceRefs": [
+        "full-object"
+      ],
+      "details": [],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(214, 216, 219, 1)",
+        "secondaryAlbedo": "rgba(194, 197, 201, 1)",
+        "materialClass": "metal",
+        "materialClassConfidence": 0.9
+      }
+    },
+    {
       "id": "gear-train",
       "name": "Going Train (4 spur gears)",
       "level": "micro",
@@ -4639,6 +4784,173 @@
         "det-06",
         "det-16"
       ],
+      "fidelityTier": "form-refinement",
+      "colorMaterialRecipe": {
+        "dominantAlbedo": "rgba(74, 66, 60, 1)",
+        "secondaryAlbedo": "rgba(110, 98, 89, 1)",
+        "materialClass": "metal",
+        "materialClassConfidence": 0.8,
+        "colorGradient": {
+          "type": "radial",
+          "stops": [
+            {
+              "position": 0.0,
+              "color": "rgba(110, 98, 89, 1)"
+            },
+            {
+              "position": 0.55,
+              "color": "rgba(74, 66, 60, 1)"
+            },
+            {
+              "position": 0.8,
+              "color": "rgba(42, 36, 31, 1)"
+            },
+            {
+              "position": 1.0,
+              "color": "rgba(25, 20, 16, 1)"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "calendar-works",
+      "name": "Perpetual Calendar Works (under dial)",
+      "level": "micro",
+      "role": "calibre-part",
+      "importance": 0.7,
+      "confidence": 0.4,
+      "primitive": "extrude",
+      "topologyClass": "assembled-solid",
+      "topologyRationale": "Champagne 31-tooth date ring, 12-lobe month cam, 48T program wheel, correction levers, jewels + screws; hidden beneath the dial, revealed when it rises.",
+      "geometryDescriptor": {
+        "topologyIntent": "31-tooth ring r1.05-1.30, gold monthly cam, program wheel, 2 polished levers (src/model/calendar.ts)",
+        "edgeTreatment": {
+          "type": "bevel",
+          "bevelRadius": 0.015,
+          "segments": 2
+        },
+        "deformationStack": [],
+        "uvStrategy": "generated procedural coordinates",
+        "normalStrategy": "smooth vertex normals with hard creases at facet boundaries"
+      },
+      "parent": "dial-plate",
+      "attachment": {
+        "parentSocket": "dial-underside",
+        "localStart": [
+          0,
+          0,
+          -0.3
+        ],
+        "localEnd": [
+          0,
+          0,
+          0.05
+        ],
+        "contactType": "socket",
+        "embedDepth": 0.03,
+        "gapTolerance": 0.01
+      },
+      "dimensions": {
+        "width": 2.6,
+        "height": 2.6,
+        "depth": 0.12,
+        "units": "world (1 unit = 10 mm)",
+        "confidence": 0.4
+      },
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "actionProfile": {
+        "animationRole": "rotating-part",
+        "pivot": {
+          "mode": "custom",
+          "localPosition": [
+            0,
+            0,
+            0
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "confidence": 0.9
+        },
+        "transformChannels": {
+          "translate": true,
+          "rotate": true,
+          "scale": false,
+          "bend": false,
+          "twist": false,
+          "detach": true,
+          "visibility": true,
+          "materialState": true
+        },
+        "sockets": [],
+        "collider": {
+          "type": "cylinder",
+          "offset": [
+            0,
+            0,
+            0
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ],
+          "isTrigger": false,
+          "notes": "simplified proxy for hover picking"
+        },
+        "constraints": [],
+        "destruction": {
+          "breakable": false,
+          "fractureGroup": "calendar-works",
+          "seamRefs": [],
+          "detachableFragments": [],
+          "breakImpulse": 0.0,
+          "debrisMaterial": "mat-dial-plate"
+        }
+      },
+      "material": "mat-dial-plate",
+      "materialLayers": [
+        "mat-dial-plate",
+        "mat-case-polished"
+      ],
+      "deformations": [],
+      "joints": [],
+      "seams": [],
+      "localFeatures": [],
+      "surfaceDetail": {
+        "macroRoughness": 0.5,
+        "microRoughness": 0.25,
+        "bumpAmplitude": 0.003,
+        "normalPattern": "fine radial sunburst brushing",
+        "displacementPattern": "none",
+        "occlusionPattern": "recess AO inside subdial wells and apertures",
+        "edgeWearPattern": "none",
+        "notes": "radial satin gradient: warm gray-brown center -> near-black rim (det-17)"
+      },
+      "evidenceRefs": [
+        "full-object",
+        "zone-dial-center"
+      ],
+      "details": [],
       "fidelityTier": "form-refinement",
       "colorMaterialRecipe": {
         "dominantAlbedo": "rgba(74, 66, 60, 1)",
@@ -10065,10 +10377,11 @@
   "performanceBudget": {
     "qualityPriority": "reference-fidelity",
     "targetTriangles": 220000,
-    "maxDrawCalls": 140,
+    "maxDrawCalls": 175,
     "textureSize": 2048,
     "fpsTarget": 60,
-    "optimizationPolicy": "Reach accepted visual fidelity first, then optimize without removing reference-critical geometry or surface layers. Calibre module adds 7 draws (127 measured at finale, 77fps)."
+    "optimizationPolicy": "Reach accepted visual fidelity first, then optimize without removing reference-critical geometry or surface layers. Calibre module adds 7 draws (127 measured at finale, 77fps).",
+    "budgetNote": "raised 140->175 for the max-detail calibre iteration (measured 167 calls / 137k tris / 79-86 fps at 1.75 dpr); fps target 60 still met with 30% headroom"
   },
   "lightingFromPhoto": [
     {
@@ -10151,22 +10464,22 @@
     "components": {
       "crystal": {
         "axis": [
-          0,
-          0.157,
-          0.988
+          -0.22,
+          0.55,
+          0.8
         ],
-        "distance": 3.5,
+        "distance": 2.75,
         "order": 1,
         "label": "CRYSTAL",
         "description": "Domed sapphire glazing"
       },
       "bezel": {
         "axis": [
-          0,
-          0.119,
-          0.993
+          -0.18,
+          0.16,
+          0.97
         ],
-        "distance": 2.7,
+        "distance": 2.3,
         "order": 2,
         "label": "BEZEL",
         "description": "Concave polished front ring"
@@ -10174,10 +10487,10 @@
       "rehaut-ring": {
         "axis": [
           0,
-          0.08,
-          0.997
+          0.02,
+          1
         ],
-        "distance": 2.2,
+        "distance": 1.95,
         "order": 3,
         "label": "REHAUT",
         "description": "Inner trim ring"
@@ -10188,40 +10501,40 @@
           0,
           1
         ],
-        "distance": 1.3,
+        "distance": 1.72,
         "order": 4,
         "label": "",
         "description": "Center cap"
       },
       "hand-chrono": {
         "axis": [
+          0.24,
           0.12,
-          0.06,
-          0.99
+          0.96
         ],
-        "distance": 1.25,
+        "distance": 1.62,
         "order": 5,
         "label": "SECONDS",
         "description": "Chronograph seconds needle"
       },
       "hand-minute": {
         "axis": [
-          -0.1,
-          0.08,
-          0.99
+          -0.22,
+          0.16,
+          0.96
         ],
-        "distance": 1.05,
+        "distance": 1.48,
         "order": 6,
         "label": "MINUTE",
         "description": "Leaf minute hand"
       },
       "hand-hour": {
         "axis": [
-          0.08,
-          -0.1,
-          0.99
+          0.18,
+          -0.22,
+          0.96
         ],
-        "distance": 0.85,
+        "distance": 1.32,
         "order": 7,
         "label": "HOUR",
         "description": "Leaf hour hand"
@@ -10232,7 +10545,7 @@
           0,
           1
         ],
-        "distance": 0.6,
+        "distance": 1.18,
         "order": 8,
         "label": "",
         "description": "Small seconds hand"
@@ -10243,7 +10556,7 @@
           0,
           1
         ],
-        "distance": 0.6,
+        "distance": 1.18,
         "order": 8,
         "label": "",
         "description": "30-min counter hand"
@@ -10254,7 +10567,7 @@
           0,
           1
         ],
-        "distance": 0.6,
+        "distance": 1.18,
         "order": 8,
         "label": "",
         "description": "Date hand"
@@ -10265,7 +10578,7 @@
           0,
           1
         ],
-        "distance": 0.5,
+        "distance": 1.05,
         "order": 9,
         "label": "MARKERS",
         "description": "Applied baton indexes"
@@ -10276,7 +10589,7 @@
           0,
           1
         ],
-        "distance": 0.55,
+        "distance": 0.85,
         "order": 10,
         "label": "DAY / MONTH",
         "description": "Calendar aperture set"
@@ -10287,7 +10600,7 @@
           0,
           1
         ],
-        "distance": 0.55,
+        "distance": 0.92,
         "order": 10,
         "label": "",
         "description": "Day/night + leap year"
@@ -10298,7 +10611,7 @@
           0,
           1
         ],
-        "distance": 0.42,
+        "distance": 0.72,
         "order": 11,
         "label": "SUBDIAL",
         "description": "Recessed counter wells"
@@ -10306,21 +10619,21 @@
       "date-subdial": {
         "axis": [
           0,
-          0,
-          1
+          -0.45,
+          0.89
         ],
-        "distance": 0.42,
+        "distance": 0.7,
         "order": 11,
         "label": "DATE RING",
         "description": "Perpetual date arc"
       },
       "moonphase": {
         "axis": [
-          0,
-          0,
-          -1
+          0.35,
+          -0.15,
+          -0.925
         ],
-        "distance": 0.22,
+        "distance": 2.3,
         "order": 12,
         "label": "MOONPHASE",
         "description": "Navy lacquer moon disc"
@@ -10338,30 +10651,30 @@
       },
       "movement-plate": {
         "axis": [
-          0.55,
-          -0.68,
-          -0.48
+          0.25,
+          -0.23,
+          -0.94
         ],
-        "distance": 3.35,
+        "distance": 3.6,
         "order": 14,
         "label": "MOVEMENT",
         "description": "Mechanical calibre"
       },
       "case-back": {
         "axis": [
-          0.68,
-          -0.4,
-          -0.62
+          0.72,
+          -0.5,
+          -0.48
         ],
-        "distance": 4.6,
+        "distance": 5.4,
         "order": 15,
         "label": "CASE BACK",
         "description": "Screw-down rear cover"
       },
       "crown": {
         "axis": [
-          1,
-          0,
+          0.97,
+          0.24,
           0
         ],
         "distance": 1.6,
@@ -10375,7 +10688,7 @@
           0.5,
           0
         ],
-        "distance": 0.95,
+        "distance": 0.75,
         "order": 17,
         "label": "UPPER PUSHER",
         "description": "Chronograph start/stop"
@@ -10386,7 +10699,7 @@
           -0.5,
           0
         ],
-        "distance": 0.95,
+        "distance": 0.55,
         "order": 17,
         "label": "LOWER PUSHER",
         "description": "Chronograph reset"
@@ -10397,7 +10710,7 @@
           1,
           0
         ],
-        "distance": 0.55,
+        "distance": 1.0,
         "order": 18,
         "label": "STRAP",
         "description": "Braided calfskin, upper"
@@ -10408,7 +10721,7 @@
           -1,
           0
         ],
-        "distance": 0.55,
+        "distance": 1.0,
         "order": 18,
         "label": "",
         "description": "Braided calfskin, lower"
@@ -10478,6 +10791,28 @@
         "order": 20,
         "label": "",
         "description": "Bridge screws"
+      },
+      "chrono-works": {
+        "axis": [
+          -0.12,
+          0.38,
+          0.92
+        ],
+        "distance": 1.1,
+        "order": 19,
+        "label": "COLUMN WHEEL",
+        "description": "Chronograph command layer"
+      },
+      "calendar-works": {
+        "axis": [
+          0.27,
+          0.32,
+          -0.91
+        ],
+        "distance": 2.3,
+        "order": 21,
+        "label": "CALENDAR WORKS",
+        "description": "Perpetual calendar module"
       }
     },
     "stagger": {
@@ -10507,14 +10842,6 @@
           0.3,
           0.15
         ],
-        "12": [
-          0.34,
-          0.14
-        ],
-        "13": [
-          0.5,
-          0.15
-        ],
         "4": [
           0.42,
           0.1
@@ -10532,8 +10859,12 @@
           0.12
         ],
         "8": [
-          0.52,
-          0.11
+          0.5,
+          0.1
+        ],
+        "13": [
+          0.5,
+          0.15
         ],
         "16": [
           0.62,
@@ -10543,13 +10874,21 @@
           0.66,
           0.13
         ],
-        "14": [
-          0.76,
-          0.15
-        ],
         "15": [
-          0.8,
-          0.15
+          0.74,
+          0.13
+        ],
+        "14": [
+          0.82,
+          0.14
+        ],
+        "12": [
+          0.85,
+          0.12
+        ],
+        "21": [
+          0.87,
+          0.11
         ],
         "18": [
           0.86,

@@ -2,6 +2,12 @@
   "model": "perpetual-calendar-chronograph",
   "parts": [
     {
+      "name": "root",
+      "kind": "container",
+      "module": "root",
+      "triangles": 0
+    },
+    {
       "name": "strap-assembly",
       "kind": "container",
       "module": "strap-assembly",
@@ -26,92 +32,122 @@
       "triangles": 0
     },
     {
-      "name": "root",
-      "kind": "container",
-      "module": "root",
-      "triangles": 0
-    },
-    {
       "name": "case-main",
-      "kind": "part",
+      "kind": "component",
       "module": "case-main",
       "triangles": 2816
     },
     {
       "name": "bezel",
-      "kind": "part",
+      "kind": "component",
       "module": "bezel",
       "triangles": 2048
     },
     {
       "name": "crystal",
-      "kind": "part",
+      "kind": "component",
       "module": "crystal",
       "triangles": 3072
     },
     {
       "name": "case-back",
-      "kind": "part",
+      "kind": "component",
       "module": "case-back",
       "triangles": 1152
     },
     {
       "name": "movement-plate",
-      "kind": "part",
+      "kind": "component",
       "module": "movement-plate",
-      "triangles": 1476
+      "triangles": 2728
+    },
+    {
+      "name": "gear-train",
+      "kind": "component",
+      "module": "gear-train",
+      "triangles": 3864
+    },
+    {
+      "name": "balance-wheel",
+      "kind": "component",
+      "module": "balance-wheel",
+      "triangles": 3876
+    },
+    {
+      "name": "mainspring-barrel",
+      "kind": "component",
+      "module": "mainspring-barrel",
+      "triangles": 3912
+    },
+    {
+      "name": "movement-screws",
+      "kind": "component",
+      "module": "movement-screws",
+      "triangles": 288
+    },
+    {
+      "name": "chrono-works",
+      "kind": "component",
+      "module": "chrono-works",
+      "triangles": 1620
+    },
+    {
+      "name": "calendar-works",
+      "kind": "component",
+      "module": "calendar-works",
+      "triangles": 2836
     },
     {
       "name": "lugs",
-      "kind": "part",
+      "kind": "component",
       "module": "lugs",
-      "triangles": 1776
+      "triangles": 2032
     },
     {
       "name": "crown",
-      "kind": "part",
+      "kind": "component",
       "module": "crown",
       "triangles": 1008
     },
     {
       "name": "pusher-upper",
-      "kind": "part",
+      "kind": "component",
       "module": "pusher-upper",
       "triangles": 840
     },
     {
       "name": "pusher-lower",
-      "kind": "part",
+      "kind": "component",
       "module": "pusher-lower",
       "triangles": 840
     },
     {
       "name": "dial-plate",
-      "kind": "part",
+      "kind": "component",
       "module": "dial-plate",
       "triangles": 3124
     },
     {
       "name": "rehaut-ring",
-      "kind": "part",
+      "kind": "component",
       "module": "rehaut-ring",
       "triangles": 768
     },
     {
       "name": "hour-markers",
-      "kind": "part",
+      "kind": "component",
       "module": "hour-markers",
       "triangles": 160
     },
     {
       "name": "dial-apertures",
-      "kind": "part",
+      "kind": "component",
       "module": "dial-apertures",
       "triangles": 196
     },
     {
       "name": "dial-round-windows",
-      "kind": "part",
+      "kind": "component",
       "module": "dial-round-windows",
       "triangles": 1344
     },
@@ -123,119 +159,93 @@
     },
     {
       "name": "subdial-left",
-      "kind": "part",
+      "kind": "component",
       "module": "subdial-left",
       "triangles": 1088
     },
     {
       "name": "subdial-right",
-      "kind": "part",
+      "kind": "component",
       "module": "subdial-right",
       "triangles": 1088
     },
     {
       "name": "date-subdial",
-      "kind": "part",
+      "kind": "component",
       "module": "date-subdial",
       "triangles": 64
     },
     {
       "name": "moonphase",
-      "kind": "part",
+      "kind": "component",
       "module": "moonphase",
       "triangles": 48
     },
     {
       "name": "hand-hour",
-      "kind": "part",
+      "kind": "component",
       "module": "hand-hour",
-      "triangles": 336
+      "triangles": 576
     },
     {
       "name": "hand-minute",
-      "kind": "part",
+      "kind": "component",
       "module": "hand-minute",
-      "triangles": 336
+      "triangles": 576
     },
     {
       "name": "hand-chrono",
-      "kind": "part",
+      "kind": "component",
       "module": "hand-chrono",
       "triangles": 184
     },
     {
       "name": "subhand-left",
-      "kind": "part",
+      "kind": "component",
       "module": "subhand-left",
-      "triangles": 336
+      "triangles": 576
     },
     {
       "name": "subhand-right",
-      "kind": "part",
+      "kind": "component",
       "module": "subhand-right",
-      "triangles": 336
+      "triangles": 576
     },
     {
       "name": "hand-date",
-      "kind": "part",
+      "kind": "component",
       "module": "hand-date",
-      "triangles": 336
+      "triangles": 576
     },
     {
       "name": "pinion-cap",
-      "kind": "part",
+      "kind": "component",
       "module": "pinion-cap",
       "triangles": 460
     },
     {
       "name": "strap-upper",
-      "kind": "part",
+      "kind": "component",
       "module": "strap-upper",
       "triangles": 6100
     },
     {
       "name": "stitch-upper",
-      "kind": "part",
+      "kind": "component",
       "module": "stitch-upper",
       "triangles": 5440
     },
     {
       "name": "strap-lower",
-      "kind": "part",
+      "kind": "component",
       "module": "strap-lower",
       "triangles": 6100
     },
     {
       "name": "stitch-lower",
-      "kind": "part",
+      "kind": "component",
       "module": "stitch-lower",
       "triangles": 8160
-    },
-    {
-      "name": "gear-train",
-      "kind": "part",
-      "module": "gear-train",
-      "triangles": 1936
-    },
-    {
-      "name": "balance-wheel",
-      "kind": "part",
-      "module": "balance-wheel",
-      "triangles": 3876
-    },
-    {
-      "name": "mainspring-barrel",
-      "kind": "part",
-      "module": "mainspring-barrel",
-      "triangles": 2468
-    },
-    {
-      "name": "movement-screws",
-      "kind": "part",
-      "module": "movement-screws",
-      "triangles": 192
     }
-  ],
-  "unnamedMeshes": 0,
-  "integralMeshes": 20
+  ]
 }

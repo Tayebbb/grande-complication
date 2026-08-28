@@ -44,6 +44,7 @@ import {
   mergeGeometries,
 } from './model/parts';
 import { buildMovement } from './model/movement';
+import { buildCalendarWorks } from './model/calendar';
 
 export type Fidelity = 'blockout' | 'structural' | 'form' | 'full';
 
@@ -75,36 +76,40 @@ export interface ProceduralModelRuntime {
 /* ------------------------------------------------------------------ */
 
 export const EXPLOSION: Record<string, ExplodeMeta> = {
-  // front glazing stack lifts diagonally up-and-out so it clears the dial sightline
-  crystal:              { axis: [0, 0.157, 0.988], distance: 3.5,  order: 1,  label: 'CRYSTAL',       description: 'Domed sapphire glazing' },
-  bezel:                { axis: [0, 0.119, 0.993], distance: 2.7,  order: 2,  label: 'BEZEL',         description: 'Concave polished front ring' },
-  'rehaut-ring':        { axis: [0, 0.08, 0.997],  distance: 2.2,  order: 3,  label: 'REHAUT',        description: 'Inner trim ring' },
-  'pinion-cap':         { axis: [0, 0, 1],  distance: 1.3,  order: 4,  label: '',              description: 'Center cap' },
-  'hand-chrono':        { axis: [0.12, 0.06, 0.99], distance: 1.25, order: 5,  label: 'SECONDS',  description: 'Chronograph seconds needle' },
-  'hand-minute':        { axis: [-0.1, 0.08, 0.99], distance: 1.05, order: 6,  label: 'MINUTE',   description: 'Leaf minute hand' },
-  'hand-hour':          { axis: [0.08, -0.1, 0.99], distance: 0.85, order: 7,  label: 'HOUR',     description: 'Leaf hour hand' },
-  'subhand-left':       { axis: [0, 0, 1],  distance: 0.6,  order: 8,  label: '',              description: 'Small seconds hand' },
-  'subhand-right':      { axis: [0, 0, 1],  distance: 0.6,  order: 8,  label: '',              description: '30-min counter hand' },
-  'hand-date':          { axis: [0, 0, 1],  distance: 0.6,  order: 8,  label: '',              description: 'Date hand' },
-  'hour-markers':       { axis: [0, 0, 1],  distance: 0.5,  order: 9,  label: 'MARKERS',       description: 'Applied baton indexes' },
-  'dial-apertures':     { axis: [0, 0, 1],  distance: 0.55, order: 10, label: 'DAY / MONTH',   description: 'Calendar aperture set' },
-  'dial-round-windows': { axis: [0, 0, 1],  distance: 0.55, order: 10, label: '',              description: 'Day/night + leap year' },
-  subdials:             { axis: [0, 0, 1],  distance: 0.42, order: 11, label: 'SUBDIAL',       description: 'Recessed counter wells' },
-  'date-subdial':       { axis: [0, 0, 1],  distance: 0.42, order: 11, label: 'DATE RING',     description: 'Perpetual date arc' },
-  moonphase:            { axis: [0, 0, -1], distance: 0.22, order: 12, label: 'MOONPHASE',     description: 'Navy lacquer moon disc' },
+  // front glazing stack lifts diagonally up-left so it clears the dial sightline
+  crystal:              { axis: [-0.22, 0.55, 0.80], distance: 2.75, order: 1,  label: 'CRYSTAL',       description: 'Domed sapphire glazing' },
+  bezel:                { axis: [-0.18, 0.16, 0.97], distance: 2.3,  order: 2,  label: 'BEZEL',         description: 'Concave polished front ring' },
+  'rehaut-ring':        { axis: [0, 0.02, 1],  distance: 1.95,  order: 3,  label: 'REHAUT',        description: 'Inner trim ring' },
+  'pinion-cap':         { axis: [0, 0, 1],  distance: 1.72, order: 4,  label: '',              description: 'Center cap' },
+  'hand-chrono':        { axis: [0.24, 0.12, 0.96], distance: 1.62, order: 5,  label: 'SECONDS',  description: 'Chronograph seconds needle' },
+  'hand-minute':        { axis: [-0.22, 0.16, 0.96], distance: 1.48, order: 6,  label: 'MINUTE',   description: 'Leaf minute hand' },
+  'hand-hour':          { axis: [0.18, -0.22, 0.96], distance: 1.32, order: 7,  label: 'HOUR',     description: 'Leaf hour hand' },
+  'subhand-left':       { axis: [0, 0, 1],  distance: 1.18, order: 8,  label: '',              description: 'Small seconds hand' },
+  'subhand-right':      { axis: [0, 0, 1],  distance: 1.18, order: 8,  label: '',              description: '30-min counter hand' },
+  'hand-date':          { axis: [0, 0, 1],  distance: 1.18, order: 8,  label: '',              description: 'Date hand' },
+  'hour-markers':       { axis: [0, 0, 1],  distance: 1.05, order: 9,  label: 'MARKERS',       description: 'Applied baton indexes' },
+  'dial-apertures':     { axis: [0, 0, 1],  distance: 0.85, order: 10, label: 'DAY / MONTH',   description: 'Calendar aperture set' },
+  'dial-round-windows': { axis: [0, 0, 1],  distance: 0.92, order: 10, label: '',              description: 'Day/night + leap year' },
+  subdials:             { axis: [0, 0, 1],  distance: 0.72, order: 11, label: 'SUBDIAL',       description: 'Recessed counter wells' },
+  'date-subdial':       { axis: [0, -0.45, 0.89], distance: 0.7,  order: 11, label: 'DATE RING',     description: 'Perpetual date arc' },
+  // moon disc is sandwiched behind the dial — it exits with the rear cluster once the back is open
+  moonphase:            { axis: [0.35, -0.15, -0.925], distance: 2.3, order: 12, label: 'MOONPHASE',     description: 'Navy lacquer moon disc' },
   'dial-plate':         { axis: [0, 0, 1],  distance: 0.4,  order: 13, label: 'DIAL',          description: 'Sunburst gradient plate' },
   // calibre drops down-right into open space (clear of the strap column), internals fan off it
-  'movement-plate':     { axis: [0.55, -0.68, -0.48], distance: 3.35, order: 14, label: 'MOVEMENT', description: 'Mechanical calibre' },
+  'movement-plate':     { axis: [0.25, -0.23, -0.94], distance: 3.6, order: 14, label: 'MOVEMENT', description: 'Mechanical calibre' },
   'gear-train':         { axis: [0.22, 0.14, 0.96], distance: 0.62, order: 19, label: 'GEAR TRAIN', description: 'Going train, cut teeth' },
   'balance-wheel':      { axis: [0.05, -0.35, 0.94], distance: 0.7, order: 19, label: 'BALANCE',   description: 'Balance wheel + hairspring' },
   'mainspring-barrel':  { axis: [0.35, -0.12, 0.93], distance: 0.55, order: 19, label: 'BARREL',    description: 'Mainspring barrel' },
+  'chrono-works':       { axis: [-0.12, 0.38, 0.92], distance: 1.1, order: 19, label: 'COLUMN WHEEL', description: 'Chronograph command layer' },
   'movement-screws':    { axis: [0.15, -0.3, -0.94], distance: 0.7, order: 20, label: '',           description: 'Bridge screws' },
-  'case-back':          { axis: [0.68, -0.4, -0.62], distance: 4.6, order: 15, label: 'CASE BACK', description: 'Screw-down rear cover' },
-  crown:                { axis: [1, 0, 0],  distance: 1.6,  order: 16, label: 'CROWN',         description: 'Fluted winding crown' },
-  'pusher-upper':       { axis: [0.866, 0.5, 0],  distance: 0.95, order: 17, label: 'UPPER PUSHER', description: 'Chronograph start/stop' },
-  'pusher-lower':       { axis: [0.866, -0.5, 0], distance: 0.95, order: 17, label: 'LOWER PUSHER', description: 'Chronograph reset' },
-  'strap-upper':        { axis: [0, 1, 0],  distance: 0.55, order: 18, label: 'STRAP',         description: 'Braided calfskin, upper' },
-  'strap-lower':        { axis: [0, -1, 0], distance: 0.55, order: 18, label: '',              description: 'Braided calfskin, lower' },
+  // calendar module exits through the opened case back (front lane is walled by the case band)
+  'calendar-works':     { axis: [0.27, 0.32, -0.91], distance: 2.3, order: 21, label: 'CALENDAR WORKS', description: 'Perpetual calendar module' },
+  'case-back':          { axis: [0.72, -0.5, -0.48], distance: 5.4, order: 15, label: 'CASE BACK', description: 'Screw-down rear cover' },
+  crown:                { axis: [0.97, 0.24, 0],  distance: 1.6,  order: 16, label: 'CROWN',         description: 'Fluted winding crown' },
+  'pusher-upper':       { axis: [0.866, 0.5, 0],  distance: 0.75, order: 17, label: 'UPPER PUSHER', description: 'Chronograph start/stop' },
+  'pusher-lower':       { axis: [0.866, -0.5, 0], distance: 0.55, order: 17, label: 'LOWER PUSHER', description: 'Chronograph reset' },
+  'strap-upper':        { axis: [0, 1, 0],  distance: 1.0,  order: 18, label: 'STRAP',         description: 'Braided calfskin, upper' },
+  'strap-lower':        { axis: [0, -1, 0], distance: 1.0,  order: 18, label: '',              description: 'Braided calfskin, lower' },
 };
 
 /** Hand angles (clock reading ~10:09, chrono over the date arc; refined during form review). */
@@ -174,6 +179,8 @@ function createMaterials(fidelity: Fidelity): MaterialSet {
     color: full ? 0xffffff : 0x1b2447, metalness: 0.3, roughness: 0.3,
     clearcoat: 0.4, envMapIntensity: 0.4,
     map: full ? createMoonTexture() : null,
+    emissive: new THREE.Color(0x1c2a58), emissiveIntensity: 0.5,
+    emissiveMap: full ? createMoonTexture() : null,
   });
 
   const strap = new THREE.MeshPhysicalMaterial({
@@ -375,22 +382,35 @@ export function createPerpetualCalendarChronographModel(
     mesh.name = 'case-back-mesh';
     caseBack.add(mesh);
     registerMesh('case-back', mesh);
+
+    // engraved rear medallion: concentric grooves + center boss so the back reads finished when it departs
+    const medallion: THREE.BufferGeometry[] = [
+      new THREE.TorusGeometry(1.42, 0.022, 8, 72),
+      new THREE.TorusGeometry(1.05, 0.018, 8, 64),
+      new THREE.TorusGeometry(0.62, 0.018, 8, 56),
+      new THREE.CylinderGeometry(0.3, 0.34, 0.03, 48).rotateX(Math.PI / 2),
+    ];
+    const medGeo = mergeGeometries(medallion.map((g, i) => g.translate(0, 0, i === 3 ? -0.63 : -0.62)));
+    const med = new THREE.Mesh(medGeo, mats.caseBrushed);
+    med.name = 'case-back-medallion';
+    med.userData.explodeWithParent = true;
+    med.castShadow = false;
+    caseBack.add(med);
   }
 
   const movement = node('movement-plate', 'MOVEMENT', caseAssembly, new THREE.Vector3());
   {
     const calibre = buildMovement({ plateBrushed: mats.caseBrushed, polished: mats.casePolished });
-    // each calibre part becomes its own explodable component node
     const sub: Array<[string, THREE.Group]> = [
       ['movement-base', calibre.parts.plate],
       ['gear-train', calibre.parts.gearTrain],
       ['balance-wheel', calibre.parts.balance],
       ['mainspring-barrel', calibre.parts.barrel],
       ['movement-screws', calibre.parts.screws],
+      ['chrono-works', calibre.parts.chrono],
     ];
     for (const [id, grp] of sub) {
       if (id === 'movement-base') {
-        // base plate rides the movement-plate node itself
         grp.name = 'movement-base';
         movement.add(grp);
         const first = grp.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
@@ -403,7 +423,28 @@ export function createPerpetualCalendarChronographModel(
       const first = grp.children.find((c) => (c as THREE.Mesh).isMesh || (c as THREE.InstancedMesh).isInstancedMesh) as THREE.Mesh | undefined;
       if (first) registerMesh(id, first);
     }
-    root.userData.spinMechanism = calibre.spin;
+
+    // perpetual calendar works live under the dial, revealed when the dial rises
+    const calendar = buildCalendarWorks({ brushed: mats.caseBrushed, polished: mats.casePolished });
+    const calNode = node('calendar-works', 'CALENDAR WORKS', dialAssembly, new THREE.Vector3());
+    calendar.parts.works.name = 'calendar-works-parts';
+    calNode.add(calendar.parts.works);
+    const calMesh = calendar.parts.works.children.find((c) => (c as THREE.Mesh).isMesh) as THREE.Mesh | undefined;
+    if (calMesh) registerMesh('calendar-works', calMesh);
+
+    root.userData.spinMechanism = (t: number) => {
+      calibre.spin(t);
+      calendar.spin(t);
+    };
+
+    // shadow-pass economy: the calibre + calendar micro-parts read by direct light,
+    // their shadow contribution is invisible at story scale — halve their draw cost.
+    for (const grp of [movement, calNode]) {
+      grp.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.castShadow = false;
+      });
+    }
   }
 
   const lugs = node('lugs', 'LUGS', caseAssembly, new THREE.Vector3());
@@ -420,6 +461,22 @@ export function createPerpetualCalendarChronographModel(
     mesh.name = 'lugs-mesh';
     lugs.add(mesh);
     registerMesh('lugs', mesh);
+    // spring-bar pins between each lug pair — revealed when the straps depart
+    const pinGeos: THREE.BufferGeometry[] = [];
+    for (const sy of [1, -1]) {
+      const pin = new THREE.CylinderGeometry(0.032, 0.032, 1.9, 12).rotateZ(Math.PI / 2);
+      pin.translate(0, sy * 1.78, -0.08);
+      pinGeos.push(pin);
+      for (const sx of [-1, 1]) {
+        const collar = new THREE.CylinderGeometry(0.05, 0.05, 0.08, 10).rotateZ(Math.PI / 2);
+        collar.translate(sx * 0.82, sy * 1.78, -0.08);
+        pinGeos.push(collar);
+      }
+    }
+    const pins = new THREE.Mesh(mergeGeometries(pinGeos), mats.casePolished);
+    pins.name = 'spring-bar-pins';
+    pins.userData.explodeWithParent = true;
+    lugs.add(pins);
   }
 
   const crown = node('crown', 'CROWN', caseAssembly, new THREE.Vector3());
@@ -583,7 +640,7 @@ export function createPerpetualCalendarChronographModel(
     registerMesh('date-subdial', face);
   }
 
-  const moonphase = node('moonphase', 'MOONPHASE', dateSubdial, new THREE.Vector3());
+  const moonphase = node('moonphase', 'MOONPHASE', dialAssembly, new THREE.Vector3());
   {
     const mesh = new THREE.Mesh(new THREE.CircleGeometry(0.34, 48), mats.moon);
     mesh.position.set(0, -0.74, 0.304);
@@ -708,17 +765,18 @@ const EXPLODE_WINDOWS: Record<number, [number, number]> = {
   9: [0.2, 0.15],   // markers — THE DIAL
   10: [0.25, 0.15], // apertures/windows — THE DIAL
   11: [0.3, 0.15],  // subdials/date — THE DIAL
-  12: [0.34, 0.14], // moon — THE DIAL
   4: [0.42, 0.1],   // pinion cap — THE HANDS
   5: [0.44, 0.12],  // chrono — THE HANDS
   6: [0.46, 0.12],  // minute — THE HANDS
   7: [0.49, 0.12],  // hour — THE HANDS
-  8: [0.52, 0.11],  // small hands — THE HANDS
+  8: [0.5, 0.1],    // small hands — leave with the dial so the rising plate never swallows them
   13: [0.5, 0.15],  // dial plate rises after the hand stack has cleared
   16: [0.62, 0.13], // crown — THE CONTROL
   17: [0.66, 0.13], // pushers — THE CONTROL
-  14: [0.76, 0.15], // movement — ARCHITECTURE
-  15: [0.8, 0.15],  // case back — ARCHITECTURE
+  15: [0.74, 0.13], // case back unscrews FIRST — ARCHITECTURE
+  14: [0.82, 0.14], // movement drops out through the opened back — ARCHITECTURE
+  12: [0.85, 0.12], // moon disc slides out of the rear opening onto the plate
+  21: [0.87, 0.11], // calendar module follows through the rear corridor
   18: [0.86, 0.12], // straps — ARCHITECTURE→WHOLE
   19: [0.88, 0.11], // calibre internals lift off the plate — THE WHOLE
   20: [0.92, 0.08], // bridge screws extract — THE WHOLE
