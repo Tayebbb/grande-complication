@@ -404,7 +404,14 @@ export interface StrapBuild {
   geometry: THREE.BufferGeometry;
   /** sample a point on the strap top surface at (u along, v across 0..1) */
   surfacePoint: (u: number, v: number) => THREE.Vector3;
-  frameAt: (u: number) => { p: THREE.Vector3; up: THREE.Vector3 };
+  /** local frame: p on the centreline, up = surface normal, tan = along strap (away
+   *  from the case), side = tan x up (right-handed) */
+  frameAt: (u: number) => { p: THREE.Vector3; up: THREE.Vector3; tan: THREE.Vector3; side: THREE.Vector3 };
+  /** ribbon width at u after taper / flare / end shaping */
+  width: (u: number) => number;
+  thickness: number;
+  /** punched adjustment holes (lower strap only): shallow dark cylinders */
+  holes: THREE.BufferGeometry | null;
 }
 
 /**
@@ -414,9 +421,9 @@ export interface StrapBuild {
  */
 export function buildStrap(upper: boolean): StrapBuild {
   const sgn = upper ? 1 : -1;
-  // measured from reference mask: upper visible ~0.72 D from center (tip y=2.95),
-  // lower ~1.17 D (tip y=-4.81); width 0.52 D tapering; rounded visible ends
-  const len = upper ? 1.15 : 3.0;
+  // reference photo crops the straps; full product lengths restore real anatomy:
+  // short 12h strap carries the buckle, long 6h strap tapers to the shaped tip
+  const len = upper ? 2.05 : 3.15;
   const curve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0, sgn * 1.86, -0.04),
     new THREE.Vector3(0, sgn * (1.86 + len * 0.45), -0.1),
@@ -432,9 +439,14 @@ export function buildStrap(upper: boolean): StrapBuild {
     if (!upper && u > 0.72) w *= 1 + 0.18 * ((u - 0.72) / 0.28);
     return w;
   };
-  // rounded end cap: width collapses on a circular arc over the last 12%
+  // lower: rounded end cap (width collapses on a circular arc over the last 12%);
+  // upper: narrows slightly over the last 10% and ends square (folds into the buckle)
   const width = (u: number) => {
     const w = baseWidth(u);
+    if (upper) {
+      if (u <= 0.9) return w;
+      return w * (1 - 0.12 * ((u - 0.9) / 0.1));
+    }
     if (u <= 0.88) return w;
     const k = (u - 0.88) / 0.12;
     return w * Math.sqrt(Math.max(0, 1 - k * k));
@@ -447,8 +459,9 @@ export function buildStrap(upper: boolean): StrapBuild {
   const tan = new THREE.Vector3();
   for (let i = 0; i <= U; i++) {
     const u = i / U;
-    curve.getPoint(u, pt);
-    curve.getTangent(u, tan);
+    // arc-length sampling: control points are unevenly spaced, raw t bunches at the tip
+    curve.getPointAt(u, pt);
+    curve.getTangentAt(u, tan);
     // side = +X; up = tangent x side (facing +Z-ish)
     const side = new THREE.Vector3(1, 0, 0);
     const up = new THREE.Vector3().crossVectors(side, tan).normalize();
@@ -485,12 +498,13 @@ export function buildStrap(upper: boolean): StrapBuild {
       quad(bottom[i][j + 1], bottom[i][j], bottom[i + 1][j], bottom[i + 1][j + 1],
            [v1, tu0], [v0, tu0], [v0, tu1], [v1, tu1]);
     }
-    // side walls
+    // side walls sample a fixed patch of the weave so edges read as clean leather,
+    // not tiled ribbing
     const u0 = i / U, u1 = (i + 1) / U;
     quad(bottom[i][0], top[i][0], top[i + 1][0], bottom[i + 1][0],
-         [0, u0 * texU], [0.04, u0 * texU], [0.04, u1 * texU], [0, u1 * texU]);
+         [0.5, 0.25], [0.5, 0.25], [0.5, 0.25], [0.5, 0.25]);
     quad(top[i][V], bottom[i][V], bottom[i + 1][V], top[i + 1][V],
-         [0.96, u0 * texU], [1, u0 * texU], [1, u1 * texU], [0.96, u1 * texU]);
+         [0.5, 0.25], [0.5, 0.25], [0.5, 0.25], [0.5, 0.25]);
   }
   // end cap (far end)
   const last = U;
@@ -512,25 +526,42 @@ export function buildStrap(upper: boolean): StrapBuild {
   geo.computeVertexNormals();
 
   const surfacePoint = (u: number, v: number) => {
-    const p = new THREE.Vector3();
-    curve.getPoint(u, p);
-    const t = new THREE.Vector3();
-    curve.getTangent(u, t);
+    const p = curve.getPointAt(u, new THREE.Vector3());
+    const tn = curve.getTangentAt(u, new THREE.Vector3());
     const side = new THREE.Vector3(1, 0, 0);
-    const up = new THREE.Vector3().crossVectors(side, t).normalize();
+    const up = new THREE.Vector3().crossVectors(side, tn).normalize();
     if (up.z < 0) up.negate();
-    return p.addScaledVector(side, (v - 0.5) * width(u)).addScaledVector(up, thick / 2);
+    const h = braidHeight(u * texU, v) * amp; // follow the real braid relief
+    return p.addScaledVector(side, (v - 0.5) * width(u)).addScaledVector(up, thick / 2 + h);
   };
   const frameAt = (u: number) => {
-    const p = new THREE.Vector3();
-    curve.getPoint(u, p);
-    const t = new THREE.Vector3();
-    curve.getTangent(u, t);
-    const up = new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), t).normalize();
+    const p = curve.getPointAt(u, new THREE.Vector3());
+    const tan = curve.getTangentAt(u, new THREE.Vector3());
+    const up = new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), tan).normalize();
     if (up.z < 0) up.negate();
-    return { p, up };
+    // side from tan x up so (side, tan, up) is always right-handed (up may be negated)
+    const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+    return { p, up, tan, side };
   };
-  return { geometry: geo, surfacePoint, frameAt };
+
+  // punched adjustment holes on the long strap: 6 along the centreline, u 0.55..0.85
+  let holes: THREE.BufferGeometry | null = null;
+  if (!upper) {
+    const holeGeos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 6; i++) {
+      const hu = 0.55 + (i * 0.3) / 5;
+      const { p, up, tan, side } = frameAt(hu);
+      const g = cylinderZ(0.045, 0.045, 0.03, 12);
+      g.applyMatrix4(new THREE.Matrix4()
+        .makeBasis(side, tan, up)
+        // recessed: top sits below the braid ridge peaks so it reads punched, not plugged
+        .setPosition(p.clone().addScaledVector(up, thick / 2 - 0.012)));
+      holeGeos.push(g);
+    }
+    holes = mergeGeometries(holeGeos);
+  }
+
+  return { geometry: geo, surfacePoint, frameAt, width, thickness: thick, holes };
 }
 
 /** Twisted rope stitch run along one strap edge (det-15, rep-stitch-run). */
@@ -544,19 +575,121 @@ export function buildStitchInstances(
   const mesh = new THREE.InstancedMesh(seg, material as THREE.MeshStandardMaterial, count);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
+  const basis = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const u = 0.06 + (i / (count - 1)) * 0.88;
     const p = strap.surfacePoint(u, edgeV);
-    const { up } = strap.frameAt(u);
+    const { up, tan, side } = strap.frameAt(u);
     p.addScaledVector(up, 0.003);
-    // alternate rope twist angle
+    // orient in the strap's local frame (capsule long axis ~ tangent) + rope lean
+    basis.makeBasis(side, tan, up);
+    q.setFromRotationMatrix(basis);
     const lean = (i % 2 === 0 ? 1 : -1) * 0.4;
-    q.setFromEuler(new THREE.Euler(0.1, 0, lean));
+    q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1, lean, 0)));
     m.compose(p, q, new THREE.Vector3(1, 1, 1));
     mesh.setMatrixAt(i, m);
   }
   mesh.userData.explodeWithParent = true;
   return mesh;
+}
+
+/** merge preserving smooth normals (for small polished hardware; low radial counts
+ *  would look faceted through the flat-shading mergeGeometries helper) */
+function mergeSmooth(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (const g of geos) {
+    const ng = g.index ? g.toNonIndexed() : g;
+    if (!ng.getAttribute('normal')) ng.computeVertexNormals();
+    const p = ng.getAttribute('position');
+    const n = ng.getAttribute('normal');
+    const u = ng.getAttribute('uv');
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      nor.push(n.getX(i), n.getY(i), n.getZ(i));
+      if (u) uv.push(u.getX(i), u.getY(i));
+      else uv.push(0, 0);
+    }
+  }
+  const merged = new THREE.BufferGeometry();
+  merged.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  merged.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor), 3));
+  merged.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+  return merged;
+}
+
+/**
+ * Strap end furniture, authored in the same strap-local space via build.frameAt:
+ * upper=true -> tang buckle (rounded-rect frame + centre bar + hinged prong lying
+ * back along the strap) in `metal`, plus the fixed leather keeper at u=0.78 in
+ * `leather`. upper=false -> floating keeper at u=0.5 in `leather`, metal=null.
+ */
+export function buildStrapHardware(
+  build: StrapBuild,
+  upper: boolean,
+): { metal: THREE.BufferGeometry | null; leather: THREE.BufferGeometry } {
+  const basisAt = (u: number) => {
+    const { p, up, tan, side } = build.frameAt(u);
+    return new THREE.Matrix4().makeBasis(side, tan, up).setPosition(p);
+  };
+
+  // rounded leather band hugging the strap (swept superellipse loop, smooth profile)
+  const keeperAt = (u: number): THREE.BufferGeometry => {
+    const ihw = build.width(u) / 2 + 0.02;
+    const ihh = build.thickness / 2 + 0.015; // hugs the braid instead of hovering
+    const band = 0.045;
+    const loopPts: THREE.Vector3[] = [];
+    const NK = 40, kk = 0.35;
+    for (let i = 0; i < NK; i++) {
+      const a = (i / NK) * TAU;
+      const x = (ihw + band / 2) * Math.sign(Math.cos(a)) * Math.abs(Math.cos(a)) ** kk;
+      const z = (ihh + band / 2) * Math.sign(Math.sin(a)) * Math.abs(Math.sin(a)) ** kk;
+      loopPts.push(new THREE.Vector3(x, 0, z));
+    }
+    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loopPts, true), 44, band, 8, true);
+    g.scale(1, 2.6, 1); // widen the band along the strap axis
+    g.applyMatrix4(basisAt(u));
+    return g;
+  };
+
+  // both keepers live on the buckle half (real tang-buckle sets); the holes half has none
+  if (!upper) return { metal: null, leather: new THREE.BufferGeometry() };
+
+  /* tang buckle at the square strap end (canonical frame, then end-frame transform) */
+  const tube = 0.055;
+  const hw = (build.width(1) * 1.15) / 2; // outer half width across the strap
+  const hh = 0.31;                        // outer half depth along the strap
+  const cx = hw - tube, cy = hh - tube;   // tube centreline half extents
+  const loop: THREE.Vector3[] = [];
+  const N = 48, k = 0.32;                 // superellipse -> rounded rectangle
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * TAU;
+    const x = cx * Math.sign(Math.cos(a)) * Math.abs(Math.cos(a)) ** k;
+    const y = cy * Math.sign(Math.sin(a)) * Math.abs(Math.sin(a)) ** k;
+    const z = -0.07 * (x / cx) * (x / cx); // subtle wrist-follow bow
+    loop.push(new THREE.Vector3(x, y, z));
+  }
+  const frame = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true), 56, tube, 10, true);
+
+  // bar overlaps the frame tube ends so the joint reads welded, not floating
+  const bar = new THREE.CylinderGeometry(0.034, 0.034, 2 * (cx - 0.01), 10).rotateZ(Math.PI / 2);
+
+  // prong: hinge curl around the bar + tapered shaft lying back toward the watch,
+  // tip resting on the leather
+  const curl = new THREE.TorusGeometry(0.055, 0.026, 6, 12).rotateY(Math.PI / 2).translate(0, 0, 0.02);
+  const prongLen = 0.56;
+  const shaft = new THREE.CylinderGeometry(0.02, 0.032, prongLen, 10)
+    .translate(0, -prongLen / 2, 0)
+    .rotateX(-0.08)
+    .translate(0, 0.02, 0.015);
+
+  const buckle = mergeSmooth([frame, bar, curl, shaft]);
+  // bar overlaps the leather end so the strap reads folded into the buckle
+  const { p, tan } = build.frameAt(1);
+  buckle.applyMatrix4(basisAt(1).setPosition(p.clone().addScaledVector(tan, -0.03)));
+
+  return { metal: buckle, leather: mergeSmooth([keeperAt(0.78), keeperAt(0.6)]) };
 }
 
 /* ------------------------- misc ------------------------- */

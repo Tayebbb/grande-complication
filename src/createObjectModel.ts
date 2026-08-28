@@ -37,6 +37,7 @@ import {
   buildChronoHand,
   buildHub,
   buildStrap,
+  buildStrapHardware,
   buildStitchInstances,
   buildApertureFrame,
   buildRoundWindowFrame,
@@ -184,8 +185,8 @@ function createMaterials(fidelity: Fidelity): MaterialSet {
   });
 
   const strap = new THREE.MeshPhysicalMaterial({
-    color: full ? 0xffffff : 0x23262a, metalness: 0.0, roughness: 0.8,
-    sheen: 0.35, sheenColor: new THREE.Color(0x3a3e45), envMapIntensity: 0.4,
+    color: full ? 0xd8dade : 0x23262a, metalness: 0.0, roughness: 0.8,
+    sheen: 0.18, sheenColor: new THREE.Color(0x3a3e45), envMapIntensity: 0.28,
   });
   if (full) {
     const { map, normalMap, roughnessMap } = createStrapTextures();
@@ -700,6 +701,14 @@ export function createPerpetualCalendarChronographModel(
   }
 
   /* ---- strap assembly ---- */
+  const strapHoleMat = new THREE.MeshPhysicalMaterial({
+    color: 0x17130f, metalness: 0, roughness: 0.9, envMapIntensity: 0.15,
+  });
+  // keepers read as smooth dyed leather, not braided textile
+  const keeperMat = new THREE.MeshPhysicalMaterial({
+    color: 0x24262b, metalness: 0, roughness: 0.62, sheen: 0.25,
+    sheenColor: new THREE.Color(0x3a3e45), envMapIntensity: 0.3,
+  });
   for (const [sid, upper] of [['strap-upper', true], ['strap-lower', false]] as const) {
     const s = node(sid, 'STRAP', strapAssembly, new THREE.Vector3());
     // curve-sweep at structural too: the reference strap is visibly curved and end-rounded
@@ -708,10 +717,29 @@ export function createPerpetualCalendarChronographModel(
     mesh.name = `${sid}-mesh`;
     s.add(mesh);
     registerMesh(sid, mesh);
+    if (build.holes) {
+      const holes = new THREE.Mesh(build.holes, strapHoleMat);
+      holes.name = `${sid}-holes`;
+      holes.userData.explodeWithParent = true;
+      s.add(holes);
+    }
+    const hw = buildStrapHardware(build, upper as boolean);
+    if (hw.metal) {
+      const metal = new THREE.Mesh(hw.metal, mats.casePolished);
+      metal.name = `${sid}-hardware`;
+      metal.userData.explodeWithParent = true;
+      s.add(metal);
+    }
+    if (hw.leather.getAttribute('position')?.count) {
+      const keeper = new THREE.Mesh(hw.leather, keeperMat);
+      keeper.name = `${sid}-keeper`;
+      keeper.userData.explodeWithParent = true;
+      s.add(keeper);
+    }
     const stitchId = upper ? 'stitch-upper' : 'stitch-lower';
     const st = node(stitchId, 'STITCHING', s, new THREE.Vector3());
     if (refined) {
-      const nSt = upper ? 8 : 12;
+      const nSt = upper ? 16 : 22;
       const left = buildStitchInstances(build, 0.055, nSt, mats.stitch);
       left.name = `${stitchId}-left`;
       const right = buildStitchInstances(build, 0.945, nSt, mats.stitch);
