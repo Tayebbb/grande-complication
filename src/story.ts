@@ -119,9 +119,9 @@ export interface CameraKey {
 }
 
 export const CAMERA_KEYS: CameraKey[] = [
-  { p: 0.0, az: 14, el: 30, dist: 11.5, target: [0, -2.0, 0.1] },
-  { p: 0.02, az: 14, el: 30, dist: 11.5, target: [0, -2.0, 0.1] }, // dead-stop landing on reverse
-  { p: 0.1, az: 10, el: 24, dist: 11.6, target: [0, -1.7, 0.2] },
+  { p: 0.0, az: 14, el: 30, dist: 12.8, target: [0, -2.0, 0.1] },
+  { p: 0.02, az: 14, el: 30, dist: 12.8, target: [0, -2.0, 0.1] }, // dead-stop landing on reverse
+  { p: 0.1, az: 10, el: 24, dist: 12.6, target: [0, -1.7, 0.2] },
   { p: 0.24, az: -2, el: 15, dist: 10.8, target: [0, -0.2, 1.0] },
   { p: 0.36, az: -6, el: 6, dist: 9.9, target: [0, 0.1, 2.0] },
   { p: 0.4, az: -6, el: 6, dist: 9.9, target: [0, 0.1, 2.0] }, // held beat: watch pauses at inspection distance
@@ -235,7 +235,7 @@ export const DOSSIER: DossierStop[] = [
     id: 'strap-upper', index: '05', name: 'THE STRAP', material: 'HAND-BRAIDED CALFSKIN', accent: '#b08a5a',
     body: 'Graphite-dyed, vegetable-tanned calfskin, plaited strand over strand across a supple core and closed with saddle stitching. Leather is the one component that records its wearer — it softens and takes a patina no two owners share.',
     specs: [['LEATHER', 'Vegetable-tanned calfskin'], ['CONSTRUCTION', 'Hand-braided, saddle-stitched']],
-    anchor: [0, 2.75, 2.75], az: 26, el: 6, dist: 4.2,
+    anchor: [0, 3.2, 2.75], az: 26, el: 6, dist: 4.6,
     feature: ['strap-upper', 'stitch-upper'],
   },
   {

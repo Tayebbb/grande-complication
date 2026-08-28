@@ -189,7 +189,7 @@ contactMat.map!.premultiplyAlpha = false;
 const contact = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), contactMat);
 contact.rotation.x = -Math.PI / 2;
 contact.position.y = RIG.tableY + 0.01;
-contact.scale.set(7.6, 4.6, 1);
+contact.scale.set(9.6, 4.6, 1);
 contact.renderOrder = -5;
 scene.add(contact);
 
@@ -418,7 +418,7 @@ function applyState() {
   const lift = pose.lift;
   contactMat.opacity = Math.pow(1 - lift, 1.6) * (1 - pose.approach);
   const spread = 1 + lift * 0.55;
-  contact.scale.set(7.6 * spread, 4.6 * spread, 1);
+  contact.scale.set(9.6 * spread, 4.6 * spread, 1);
   tableMat.opacity = 1 - pose.approach;
   table.visible = tableMat.opacity > 0.01;
   contact.visible = contactMat.opacity > 0.01;

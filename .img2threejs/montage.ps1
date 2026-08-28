@@ -19,7 +19,7 @@ $W = $Cols * ($CellW + $pad) + $pad
 $H = $rows * ($cellH + $labelH + $pad) + $pad
 $bmp = New-Object System.Drawing.Bitmap($W, $H)
 $g = [System.Drawing.Graphics]::FromImage($bmp)
-$g.Clear([System.Drawing.Color]::FromArgb(18,18,20))
+$g.Clear([System.Drawing.Color]::FromArgb(18, 18, 20))
 $font = New-Object System.Drawing.Font('Consolas', 12)
 $brush = [System.Drawing.Brushes]::White
 for ($i = 0; $i -lt $imgs.Count; $i++) {
