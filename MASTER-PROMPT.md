@@ -88,9 +88,3 @@ Dispatch separate agents and iterate until honest scores ≥ 9/10:
 3. **Critic agents (read-only)** each round, scoring 1–10 with evidence: reference fidelity, exploded-view quality/detail, motion integrity (they must do the transit collision math from the code), fact accuracy of all copy, shot quality of every dossier frame, scroll discipline (single state writer, everything f(scroll)). Fix every blocker and re-verify; never inflate scores; report remaining limitations honestly.
 4. **QA matrix:** capture real rendered frames at 0/10/…/100% forward, revisit beats scrolling upward, prove **forward/reverse pixel parity** and bit-identical pose determinism at the same progress; test rapid flings, slow scrolls, arbitrary stops; verify text sync, no clipping, no lighting/camera jumps, budgets met. Repeat the key beats across the responsive device matrix. For attached micro-details, **measure perpendicular clearance numerically** (sample instance matrices against the actual surface mesh) — eyeballing misses embedded-vs-floating errors.
 5. **Deterministic QA hooks:** expose dev-only drivers that set any timeline state directly and force a single render (`__setStory` / `__setTour` / `__frame`) — hidden/throttled tabs suspend rAF and silently fake scroll-driven captures, so never trust a screenshot you can't force-frame.
-
-## 8. Ship & live-verify
-
-- Typecheck clean, production build, commit with descriptive messages, push to a **private GitHub repo**, deploy via GitHub Pages Actions, watch the run to success.
-- Verify the **live** site end-to-end in a real browser: zero console errors, chapters/labels/dossier firing, fps healthy, full round trip 0 → 100 → 0 restores the exact opening state.
-- Final report: what shipped, verification scores per round, measured performance, and an honest list of remaining limitations.
