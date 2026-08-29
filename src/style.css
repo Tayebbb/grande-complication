@@ -28,7 +28,8 @@ body {
 #stage {
   position: fixed; inset: 0; z-index: 0;
 }
-#stage canvas { display: block; }
+/* CSS-sized so gated mobile URL-bar resizes stretch instead of gap (buffer updates on settle) */
+#stage canvas { display: block; width: 100% !important; height: 100% !important; }
 
 /* ---------- UI chrome ---------- */
 .ui { position: fixed; inset: 0; z-index: 3; pointer-events: none; }

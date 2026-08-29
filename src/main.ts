@@ -561,6 +561,8 @@ interface LiveLabel {
   node: THREE.Object3D;
   offset: THREE.Vector3;
   minSeparation: number;
+  sx: number; // smoothed screen position (NaN until first projection)
+  sy: number;
 }
 
 const labelLayer = document.getElementById('labels')!;
@@ -587,6 +589,8 @@ function refreshLabels(stageDef: StoryStage) {
       node,
       offset: new THREE.Vector3(...spec.offset),
       minSeparation: spec.minSeparation ?? 0,
+      sx: NaN,
+      sy: NaN,
     });
   }
 }
@@ -600,6 +604,8 @@ const projV = new THREE.Vector3();
 const dossierPanel = document.getElementById('dossier-panel')!;
 const dossierRing = document.getElementById('dossier-ring')!;
 let dossierIdx = -1;
+let ringSX = NaN;
+let ringSY = NaN;
 const ringAnchor = new THREE.Vector3();
 
 function renderDossierStop(i: number) {
@@ -633,19 +639,31 @@ function updateDossier(q: number) {
       gsap.to(dossierPanel, { opacity: 0, duration: reducedMotion ? 0 : 0.25 });
     }
   }
-  // target ring tracks the featured component
+  // target ring tracks the featured component (smoothed — coarse touch scrub steps
+  // otherwise read as shake)
   if (idx >= 0) {
     ringAnchor.set(...DOSSIER[idx].anchor).project(camera);
     const behind = ringAnchor.z > 1;
-    dossierRing.style.left = `${((ringAnchor.x * 0.5 + 0.5) * 100).toFixed(2)}%`;
-    dossierRing.style.top = `${((-ringAnchor.y * 0.5 + 0.5) * 100).toFixed(2)}%`;
+    const tx = (ringAnchor.x * 0.5 + 0.5) * 100;
+    const ty = (-ringAnchor.y * 0.5 + 0.5) * 100;
+    if (Number.isNaN(ringSX) || Math.abs(tx - ringSX) + Math.abs(ty - ringSY) > 24) {
+      ringSX = tx;
+      ringSY = ty;
+    } else {
+      ringSX += (tx - ringSX) * 0.35;
+      ringSY += (ty - ringSY) * 0.35;
+    }
+    dossierRing.style.left = `${ringSX.toFixed(2)}%`;
+    dossierRing.style.top = `${ringSY.toFixed(2)}%`;
     dossierRing.style.opacity = behind ? '0' : '0.9';
   } else {
     dossierRing.style.opacity = '0';
+    ringSX = NaN;
+    ringSY = NaN;
   }
 }
 
-function updateLabels(k = 0.12) {
+function updateLabels(k = 0.12, kPos = 1) {
   for (const l of liveLabels) {
     const exp = l.node.userData.explode as { distance: number } | undefined;
     const home = l.node.userData.assembledPosition as THREE.Vector3 | undefined;
@@ -658,7 +676,16 @@ function updateLabels(k = 0.12) {
     const behind = projV.z > 1;
     const x = THREE.MathUtils.clamp((projV.x * 0.5 + 0.5) * window.innerWidth, window.innerWidth * 0.05, window.innerWidth * 0.95);
     const y = THREE.MathUtils.clamp((-projV.y * 0.5 + 0.5) * window.innerHeight, window.innerHeight * 0.06, window.innerHeight * 0.9);
-    l.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%,-50%)`;
+    // smooth screen positions: touch scroll delivers coarse scrub steps that read
+    // as shaking when labels snap; glide toward the target instead (snap on retarget)
+    if (Number.isNaN(l.sx) || Math.abs(x - l.sx) + Math.abs(y - l.sy) > 160) {
+      l.sx = x;
+      l.sy = y;
+    } else {
+      l.sx += (x - l.sx) * kPos;
+      l.sy += (y - l.sy) * kPos;
+    }
+    l.el.style.transform = `translate(${l.sx.toFixed(1)}px, ${l.sy.toFixed(1)}px) translate(-50%,-50%)`;
     const target = behind || sep === 0 ? 0 : 1;
     const cur = Number(l.el.style.opacity || 0);
     l.el.style.opacity = String(cur + (target - cur) * k);
@@ -746,10 +773,27 @@ window.addEventListener('pointermove', (e) => {
   state.mouseY = -((e.clientY / window.innerHeight) * 2 - 1);
 });
 
-window.addEventListener('resize', () => {
+// mobile URL-bar show/hide fires resize storms mid-scroll: gate small height-only
+// changes (canvas stretches via CSS meanwhile) and settle once scrolling pauses
+let lastW = window.innerWidth;
+let lastH = window.innerHeight;
+let resizeSettle: ReturnType<typeof setTimeout> | undefined;
+function applyViewportSize() {
+  lastW = window.innerWidth;
+  lastH = window.innerHeight;
   updateProjection();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(lastW, lastH);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+}
+window.addEventListener('resize', () => {
+  const dW = Math.abs(window.innerWidth - lastW);
+  const dH = Math.abs(window.innerHeight - lastH);
+  clearTimeout(resizeSettle);
+  if (dW > 0 || dH > 160) {
+    applyViewportSize(); // real resize / orientation change
+  } else {
+    resizeSettle = setTimeout(applyViewportSize, 220); // browser-chrome noise: settle once
+  }
 });
 
 const clock = new THREE.Clock();
@@ -774,7 +818,7 @@ window.__setStory = (p: number, r = 0) => {
 };
 (window as unknown as Record<string, unknown>).__frame = () => {
   applyState();
-  updateLabels(1);
+  updateLabels(1, 1);
   renderer.render(scene, camera);
 };
 (window as unknown as Record<string, unknown>).__model = watch;
@@ -807,7 +851,7 @@ function tick() {
   state.smX += (state.mouseX - state.smX) * kParallax;
   state.smY += (state.mouseY - state.smY) * kParallax;
   applyState();
-  updateLabels(1 - Math.pow(1 - 0.12, dt * 60));
+  updateLabels(1 - Math.pow(1 - 0.12, dt * 60), 1 - Math.pow(1 - 0.38, dt * 60));
   renderer.render(scene, camera);
   frames += 1;
   if (frames === 10) window.__expReady = true;
