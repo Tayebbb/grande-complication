@@ -571,7 +571,7 @@ export function buildStitchInstances(
   count: number,
   material: THREE.Material,
 ): THREE.InstancedMesh {
-  const seg = new THREE.CapsuleGeometry(0.02, 0.085, 4, 10);
+  const seg = new THREE.CapsuleGeometry(0.017, 0.075, 4, 10);
   const mesh = new THREE.InstancedMesh(seg, material as THREE.MeshStandardMaterial, count);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -580,12 +580,12 @@ export function buildStitchInstances(
     const u = 0.06 + (i / (count - 1)) * 0.88;
     const p = strap.surfacePoint(u, edgeV);
     const { up, tan, side } = strap.frameAt(u);
-    p.addScaledVector(up, 0.003);
-    // orient in the strap's local frame (capsule long axis ~ tangent) + rope lean
+    // half-embedded: saddle stitching sinks into a thread channel, it never sits proud
+    p.addScaledVector(up, -0.011);
     basis.makeBasis(side, tan, up);
     q.setFromRotationMatrix(basis);
-    const lean = (i % 2 === 0 ? 1 : -1) * 0.4;
-    q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.1, lean, 0)));
+    const lean = (i % 2 === 0 ? 1 : -1) * 0.22;
+    q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.06, lean, 0)));
     m.compose(p, q, new THREE.Vector3(1, 1, 1));
     mesh.setMatrixAt(i, m);
   }

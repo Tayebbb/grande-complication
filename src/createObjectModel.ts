@@ -739,7 +739,7 @@ export function createPerpetualCalendarChronographModel(
     const stitchId = upper ? 'stitch-upper' : 'stitch-lower';
     const st = node(stitchId, 'STITCHING', s, new THREE.Vector3());
     if (refined) {
-      const nSt = upper ? 16 : 22;
+      const nSt = upper ? 20 : 26;
       const left = buildStitchInstances(build, 0.055, nSt, mats.stitch);
       left.name = `${stitchId}-left`;
       const right = buildStitchInstances(build, 0.945, nSt, mats.stitch);
