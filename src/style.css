@@ -128,6 +128,7 @@ main { position: relative; z-index: 1; }
   border: 1px solid var(--accent); border-radius: 50%;
   transform: translate(-50%, -50%);
   opacity: 0; pointer-events: none;
+  will-change: left, top;
 }
 .dossier-ring::after {
   content: ''; position: absolute; inset: -7px;
@@ -193,14 +194,16 @@ main { position: relative; z-index: 1; }
   text-shadow: 0 1px 14px rgba(11, 11, 13, 0.9);
 }
 
-/* component labels */
-#labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+/* projected 3D overlays — fixed to the viewport like the canvas itself */
+#overlay3d { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+#labels { position: absolute; inset: 0; pointer-events: none; }
 .lbl {
   position: absolute; transform: translate(-50%, -50%);
   opacity: 0;
   font-size: 10.5px; letter-spacing: 0.3em; color: var(--ink);
   white-space: nowrap;
   text-shadow: 0 1px 10px rgba(11, 11, 13, 0.95);
+  will-change: transform;
 }
 .lbl::before {
   content: '';

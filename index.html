@@ -36,6 +36,12 @@
       <div id="chapter-live" class="visually-hidden" aria-live="polite"></div>
     </div>
 
+    <!-- projected 3D overlays: viewport-fixed so pinned-section transforms can't shake them -->
+    <div id="overlay3d" aria-hidden="true">
+      <div id="labels"></div>
+      <div class="dossier-ring" id="dossier-ring"></div>
+    </div>
+
     <main>
       <section class="hero" aria-label="Introduction">
         <h1 class="visually-hidden">Grande Complication — a cinematic deconstruction of a perpetual calendar chronograph</h1>
@@ -43,11 +49,9 @@
 
       <section id="story" aria-label="The construction story">
         <div class="copy" id="copy"></div>
-        <div id="labels" aria-hidden="true"></div>
       </section>
 
       <section id="dossier" aria-label="Component dossier">
-        <div class="dossier-ring" id="dossier-ring" aria-hidden="true"></div>
         <aside class="dossier-panel" id="dossier-panel" aria-live="polite"></aside>
       </section>
 
