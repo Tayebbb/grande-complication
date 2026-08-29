@@ -626,6 +626,8 @@ function updateDossier(q: number) {
   const idx = q > 0.001 && raw >= 0 && raw < n ? raw : -1;
   if (idx !== dossierIdx) {
     dossierIdx = idx;
+    ringSX = NaN; // new anchor: snap the ring once instead of flying across the screen
+    ringSY = NaN;
     if (idx >= 0) {
       renderDossierStop(idx);
       if (reducedMotion) {
@@ -646,7 +648,7 @@ function updateDossier(q: number) {
     const behind = ringAnchor.z > 1;
     const tx = (ringAnchor.x * 0.5 + 0.5) * 100;
     const ty = (-ringAnchor.y * 0.5 + 0.5) * 100;
-    if (Number.isNaN(ringSX) || Math.abs(tx - ringSX) + Math.abs(ty - ringSY) > 24) {
+    if (Number.isNaN(ringSX)) {
       ringSX = tx;
       ringSY = ty;
     } else {
@@ -677,8 +679,10 @@ function updateLabels(k = 0.12, kPos = 1) {
     const x = THREE.MathUtils.clamp((projV.x * 0.5 + 0.5) * window.innerWidth, window.innerWidth * 0.05, window.innerWidth * 0.95);
     const y = THREE.MathUtils.clamp((-projV.y * 0.5 + 0.5) * window.innerHeight, window.innerHeight * 0.06, window.innerHeight * 0.9);
     // smooth screen positions: touch scroll delivers coarse scrub steps that read
-    // as shaking when labels snap; glide toward the target instead (snap on retarget)
-    if (Number.isNaN(l.sx) || Math.abs(x - l.sx) + Math.abs(y - l.sy) > 160) {
+    // as shaking when labels snap. Always glide — fresh labels start at NaN and
+    // snap once; distance-based snapping would re-enable jitter exactly at the
+    // fast finale beats where every label moves far per step.
+    if (Number.isNaN(l.sx)) {
       l.sx = x;
       l.sy = y;
     } else {
@@ -719,7 +723,7 @@ const ctx = gsap.context(() => {
     start: 'top top',
     end: '+=10400',
     pin: true,
-    scrub: reducedMotion ? true : 1,
+    scrub: reducedMotion ? true : isTouch ? 1.6 : 1,
     onUpdate(self) {
       state.story = self.progress;
       progressFill.style.transform = `scaleX(${self.progress.toFixed(4)})`;
@@ -742,7 +746,7 @@ const ctx = gsap.context(() => {
     start: 'top top',
     end: '+=9600',
     pin: true,
-    scrub: reducedMotion ? true : 1,
+    scrub: reducedMotion ? true : isTouch ? 1.6 : 1,
     onUpdate(self) {
       state.tour = self.progress;
     },
