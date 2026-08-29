@@ -423,7 +423,7 @@ export function buildStrap(upper: boolean): StrapBuild {
   const sgn = upper ? 1 : -1;
   // reference photo crops the straps; full product lengths restore real anatomy:
   // short 12h strap carries the buckle, long 6h strap tapers to the shaped tip
-  const len = upper ? 4.0 : 5.3;
+  const len = upper ? 6.0 : 7.3;
   const curve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0, sgn * 1.86, -0.04),
     new THREE.Vector3(0, sgn * (1.86 + len * 0.45), -0.1),
