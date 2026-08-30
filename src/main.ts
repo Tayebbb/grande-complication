@@ -37,7 +37,12 @@ const renderer = new THREE.WebGLRenderer({
   powerPreference: 'high-performance',
   preserveDrawingBuffer: qaMode, // QA captures only; off in normal viewing
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+// adaptive render resolution: full DPR (capped) by default, stepped down only
+// while the device provably can't hold framerate (see adaptResolution)
+const DPR_CAP = 1.75;
+const dprCeiling = () => Math.min(window.devicePixelRatio || 1, DPR_CAP);
+let dpr = dprCeiling();
+renderer.setPixelRatio(dpr);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -760,12 +765,6 @@ const ctx = gsap.context(() => {
     scrollTrigger: { trigger: '.outro', start: 'center 65%' },
   });
 
-  // hero entrance
-  gsap.fromTo(
-    state,
-    { heroIn: 0 },
-    { heroIn: 1, duration: reducedMotion ? 0 : 1.6, ease: 'power2.out' },
-  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -787,7 +786,8 @@ function applyViewportSize() {
   lastH = window.innerHeight;
   updateProjection();
   renderer.setSize(lastW, lastH);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+  dpr = Math.min(dpr, dprCeiling()); // monitor change can lower the ceiling
+  renderer.setPixelRatio(dpr);
 }
 window.addEventListener('resize', () => {
   const dW = Math.abs(window.innerWidth - lastW);
@@ -838,17 +838,46 @@ window.__perf = () => ({
   fps: fpsValue,
 });
 
+let dprSlowStreak = 0;
+let dprFastStreak = 0;
+/** Step render resolution down only while the GPU provably can't hold framerate,
+ *  back up once it clearly can — smoothness first, no change on capable hardware. */
+function adaptResolution() {
+  if (qaMode) return; // deterministic captures need a fixed buffer size
+  if (fpsValue < 45 && dpr > 1) {
+    dprFastStreak = 0;
+    if (++dprSlowStreak >= 2) {
+      dpr = Math.max(1, dpr - 0.25);
+      renderer.setPixelRatio(dpr);
+      dprSlowStreak = 0;
+    }
+  } else if (fpsValue > 57 && dpr < dprCeiling()) {
+    dprSlowStreak = 0;
+    if (++dprFastStreak >= 6) {
+      dpr = Math.min(dprCeiling(), dpr + 0.25);
+      renderer.setPixelRatio(dpr);
+      dprFastStreak = 0;
+    }
+  } else {
+    dprSlowStreak = 0;
+    dprFastStreak = 0;
+  }
+}
+
 let frames = 0;
 let rafId = 0;
 const spinFn = () => watch.userData.spinMechanism as ((t: number) => void) | undefined;
 function tick() {
   const dt = clock.getDelta();
-  fpsAccum += dt;
-  fpsFrames += 1;
+  if (dt < 0.5) { // ignore stalls (tab switch, GC) so they don't skew the fps window
+    fpsAccum += dt;
+    fpsFrames += 1;
+  }
   if (fpsAccum >= 1) {
     fpsValue = fpsFrames / fpsAccum;
     fpsAccum = 0;
     fpsFrames = 0;
+    adaptResolution();
   }
   // smooth the parallax input (frame-rate independent)
   const kParallax = 1 - Math.pow(1 - 0.06, dt * 60);
@@ -862,11 +891,28 @@ function tick() {
   rafId = requestAnimationFrame(tick);
 }
 setStage(0);
-tick();
+// Warm every shader program off the critical path (parallel compile where the
+// driver supports it): the first rendered frame then costs milliseconds instead
+// of a long main-thread freeze, and the hero fade starts only once ready.
+let disposed = false;
+renderer
+  .compileAsync(scene, camera)
+  .catch(() => {}) // warmup is an optimization — never block the experience on it
+  .then(() => {
+    if (disposed) return;
+    gsap.fromTo(
+      state,
+      { heroIn: 0 },
+      { heroIn: 1, duration: reducedMotion ? 0 : 1.6, ease: 'power2.out' },
+    );
+    tick();
+  });
 
 // cleanup on page exit + Vite HMR (beforeunload does not fire on HMR)
 function teardown() {
+  disposed = true;
   cancelAnimationFrame(rafId);
+  gsap.killTweensOf(state);
   ctx.revert();
   ScrollTrigger.killAll();
   if (lenisTick) gsap.ticker.remove(lenisTick);

@@ -35,7 +35,32 @@ function reviewCapturePlugin(): Plugin {
   };
 }
 
+/** Build-only: public/reference holds dev/QA reference imagery (545 KB+) that the
+ *  site never fetches at runtime — keep it out of the deployed Pages artifact. */
+function stripDevAssetsPlugin(): Plugin {
+  return {
+    name: 'strip-dev-reference-assets',
+    apply: 'build',
+    closeBundle() {
+      fs.rmSync(path.resolve(__dirname, 'dist/reference'), { recursive: true, force: true });
+    },
+  };
+}
+
 export default defineConfig({
   base: './', // relative asset paths so the build works on GitHub Pages project URLs
-  plugins: [reviewCapturePlugin()],
+  plugins: [reviewCapturePlugin(), stripDevAssetsPlugin()],
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // three / motion libs / app code download in parallel instead of as one
+        // 700 KB serial chunk, and app-only edits don't re-ship the libraries
+        manualChunks: {
+          three: ['three'],
+          motion: ['gsap', 'lenis'],
+        },
+      },
+    },
+  },
 });
